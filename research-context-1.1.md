@@ -65,3 +65,115 @@ There's a growing need for an intelligent system to offer a more personalized ap
 **Source:** CPCS499-C16-Final Report - Research Context & Problem Definition  
 **Date:** 2025-01-09  
 **Project:** HIFZ-AI - Personalized Quran Memorization Plans Using AI
+
+## 1.5. Target Users - Detailed Personas
+
+### 1. Students of Quran Memorization
+**Individuals of all ages and backgrounds aiming to memorize Quran, whether beginners, intermediates, or advanced learners.**
+
+**Characteristics:**
+- Vary in memorization speed (slow, medium, fast)
+- Different learning abilities and cognitive styles
+- Varying daily availability (some have 30min, some have 2+ hours)
+- Different starting points (complete beginners vs. already memorized portions)
+
+**Why Personalization is Critical:**
+- One-size-fits-all schedules don't accommodate their diverse needs
+- Some need more repetition, others need more challenge
+- Time constraints vary significantly
+- Learning pace differs based on age, experience, and natural ability
+
+**Key Pain Points:**
+- Fixed schedules cause frustration (too fast or too slow)
+- No guidance on what to review vs. what to memorize
+- Lack of progress tracking leads to loss of motivation
+- Don't know if they're making progress at an optimal rate
+
+---
+
+### 2. Quran Teachers/Instructors
+**Educators who supervise students' Quran memorization and need tools to track progress effectively.**
+
+**Characteristics:**
+- Manage multiple students simultaneously
+- Need objective performance metrics
+- Rely on subjective judgment currently
+- Want to provide personalized guidance but lack tools
+
+**What They Need from HIFZ-AI:**
+- Real-time student progress tracking
+- Performance insights and analytics
+- Data-driven recommendations for each student
+- Ability to adjust learning strategies based on objective data
+- Identification of students needing extra help
+
+**Key Benefits:**
+- Make informed decisions about teaching strategies
+- Provide personalized attention where needed
+- Track improvement over time
+- Reduce subjectivity in assessments
+
+---
+
+### 3. Islamic Educational Institutions
+**Islamic schools, madrasahs, and online Quran learning platforms seeking modern tools.**
+
+**Characteristics:**
+- Manage large groups of students
+- Want to improve overall learning outcomes
+- Need scalable solutions
+- Looking for competitive advantage through technology
+
+**What They Need from HIFZ-AI:**
+- Institutional-level analytics and reporting
+- Batch student management capabilities
+- Integration with existing curriculum
+- Progress tracking across multiple teachers
+- Standardized but personalized learning paths
+
+**Key Benefits:**
+- Better student retention and success rates
+- Data-driven curriculum improvements
+- Competitive advantage through AI-powered tools
+- Scalable personalized education
+
+---
+
+### 4. Parents/Guardians
+**Those responsible for guiding their children through Quran memorization journey.**
+
+**Characteristics:**
+- Often not Quran experts themselves
+- Want to support but don't know how
+- Seek structure and guidance
+- Want to ensure their children progress effectively
+
+**What They Need from HIFZ-AI:**
+- Clear view of child's progress and achievements
+- Structured, personalized plans for their children
+- Guidance on how to support the learning process
+- Alerts when child needs extra help or encouragement
+- Milestone tracking and celebration opportunities
+
+**Key Benefits:**
+- Peace of mind about child's progress
+- Clear understanding of what their child should be doing
+- Ability to provide meaningful support
+- Reduced anxiety about child's memorization journey
+
+---
+
+## 1.6. User Needs Summary
+
+| User Group | Primary Need | Personalization Critical Because |
+|------------|---------------|--------------------------------|
+| **Students** | Matched pace & clear direction | Speed, ability, time availability vary |
+| **Teachers** | Objective tracking & insights | Need data to guide multiple students |
+| **Institutions** | Scalable personalized education | Large student groups, diverse needs |
+| **Parents** | Progress visibility & support | Need to guide children effectively |
+
+---
+
+**Source:** CPCS499-C16-Final Report - Target Users & Personas  
+**Date:** 2025-01-09  
+**Project:** HIFZ-AI - Personalized Quran Memorization Plans Using AI
