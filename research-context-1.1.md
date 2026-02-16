@@ -177,3 +177,171 @@ There's a growing need for an intelligent system to offer a more personalized ap
 **Source:** CPCS499-C16-Final Report - Target Users & Personas  
 **Date:** 2025-01-09  
 **Project:** HIFZ-AI - Personalized Quran Memorization Plans Using AI
+
+---
+
+## 1.7. Suggested Solution
+
+The proposed solution is an AI-based Quran Memorization Plan Generator that designs personalized memorization and revision plans based on a student's unique learning profile, performance data, and retention ability.
+
+The system will analyze user-specific inputs such as current memorization level, daily availability, and revision needs, to generate and adapt a flexible memorization plan that balances new verses with structured revision.
+
+### 1.7.1. Key Features of Suggested Solution
+
+**1. Personalized Memorization Plans**
+Create customized plans for each student, considering their pace, availability, and progress.
+- System generates new verses to memorize
+- Alongside minor and major revisions
+- Based on what student has already memorized
+
+**2. Performance-Based Adjustments**
+The AI model adjusts memorization and revision plans automatically based on student's performance.
+- **Factors considered:** Speed, accuracy, retention rates
+- **Adaptation:** Scale up or slow down workload to match students' capabilities
+- **Outcome:** Dynamic adjustments ensure optimal challenge level
+
+**3. Adaptive Revision Plans**
+The system ensures that students regularly review previously memorized verses.
+- Uses personalized intervals for revision
+- **Minor revisions:** Cover recently memorized verses
+- **Major revisions:** Periodic review of larger portions for long-term retention
+
+**4. Flexible and Dynamic Scheduling**
+The system adapts to changes in student's availability or challenges.
+- Allows pausing, adjusting, or modifying memorization plans
+- Maintains progress tracking
+- Accommodates life events and varying schedules
+
+---
+
+## 1.8. Initial System Overview
+
+The project focuses on developing an AI model that generates personalized Quran memorization plans based on a student's performance data.
+
+**Note:** The model will operate without a complex system or UI, but with a simple interface to input performance data and output next memorization plan.
+
+### 1.8.1. Objective
+
+The AI model will create three types of plans:
+
+| Plan Type | Purpose | Scope |
+|-----------|----------|--------|
+| **New Memorization Plan** | Assign new Quranic verses to memorize | Daily/weekly verses |
+| **Minor Revision Plan** | Focus on reinforcing recently memorized portions | Short-term memory reinforcement |
+| **Major Revision Plan** | Periodic review of larger sections for long-term retention | Comprehensive review of memorized Quran |
+
+### 1.8.2. Key Functionalities
+
+**1. Initial Training on Historical Data**
+- **Dataset:** Contains records of student recitations
+- **Purpose:** Model learns patterns from past performances
+- **Outcome:** Understanding typical learning curves and common mistakes
+
+**2. Real-Time Plan Adaptation**
+- **Trigger:** After each student's recitation
+- **Analysis:** Performance data (mistakes, validity)
+- **Action:** Adjust future memorization and revision plans
+
+**3. Dynamic Plan Generation**
+- **Process:** Continuously refines predictions
+- **Based on:** Ongoing performance tracking
+- **Output:** New, minor, and major revision plans
+
+### 1.8.3. Input Data
+
+**Training Dataset**
+Contains recitation records of students, with details:
+- Portion requested for recitation
+- Number of mistakes made
+- Whether recitation was accepted as valid
+
+**Real-Time Performance Data**
+Captured after each recitation session, used to modify student's plans:
+- Performance on most recent recitation
+- Mistake count
+- Feedback on validity of recitation
+
+### 1.8.4. Output
+
+**1. Memorization Plan**
+- Assigns new Quranic verses based on student's capacity
+- Considers pace, time availability, and previous performance
+
+**2. Minor Revision Plan**
+- Suggests portions of recently memorized content for revision
+- Reinforces short-term memory
+- Focuses on recently learned verses
+
+**3. Major Revision Plan**
+- Periodically suggests larger sections for review
+- Supports long-term retention
+- Covers significant portions of memorized Quran
+
+### 1.8.5. Development Activities
+
+#### 1.8.5.1. Requirements Specification
+- **Identify key metrics:** Number of mistakes, pace of recitation, memorization capacity
+- **Define adjustment frequency:** How often plans should change based on recitation feedback
+
+#### 1.8.5.2. Data Collection & Preprocessing
+**Data Collection:**
+- Collect historical data on student recitations
+- Include mistakes and feedback
+
+**Data Preprocessing:**
+- Clean and structure dataset
+- Ensure consistent input for model training
+- Handle missing data
+- Normalize performance metrics
+- Organize data by individual student records
+
+#### 1.8.5.3. AI Model Design and Training
+**Model Selection:**
+- Choose appropriate machine learning model (decision tree, neural network)
+- Must handle sequential data for learning progression and retention patterns
+
+**Training:**
+- Use preprocessed dataset to train AI model
+- Model learns from past performance data
+- Identifies trends in:
+  - Student memorization speed
+  - Error rates
+  - Retention patterns
+
+#### 1.8.5.4. Model Testing and Validation
+**Testing:**
+- Validate AI model using unseen data
+- Ensures accurate memorization plans
+- Verifies plan adjustments based on student performance
+
+**Evaluation Metrics:**
+- Accuracy in predicting next verses
+- F1-score for mistake prediction
+- Ensures robustness and reliability
+
+#### 1.8.5.5. Real-Time Plan Adjustment Implementation
+**Integration:**
+- Feedback loop with new student performance data
+- Data fed into model after each recitation
+- Real-time updates to memorization and revision plans
+
+**Performance Monitoring:**
+- Continuously monitor model's predictions
+- Ensures plans effectively adapt to student's learning pace
+- Detects and corrects prediction drift
+
+#### 1.8.5.6. Continuous Learning & Improvement
+**Approach:**
+- Use reinforcement learning or similar approach
+- Enables AI model to learn and improve predictions over time
+
+**Feedback Source:**
+- Real-time recitations and evaluations
+- Continuous improvement loop
+- Adaptive to individual student patterns
+
+---
+
+**Source:** CPCS499-C16-Final Report - Suggested Solution & System Overview  
+**Date:** 2025-01-09  
+**Project:** HIFZ-AI - Personalized Quran Memorization Plans Using AI
