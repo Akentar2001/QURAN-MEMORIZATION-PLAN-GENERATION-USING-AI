@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+:root {
+  --color-navy: #1a3347;
+  --color-gold: #c9933a;
+  --color-mem-header: #1b5e20;
+  --color-minor-header: #0d47a1;
+  --color-major-header: #6d4c41;
+  --color-band-green: #e8f5e9;
+  --color-band-orange: #fff3e0;
+}
+
+body {
+  font-family: var(--font-amiri), "Amiri", serif;
+  background-color: #f5f5f5;
+  color: var(--color-navy);
+}
+
+@font-face {
+  font-family: "Amiri";
+  src: url("/fonts/Amiri-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Amiri";
+  src: url("/fonts/Amiri-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  html, body {
+    height: initial !important;
+    overflow: initial !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    direction: rtl;
+    background: white;
+  }
+
+  @page {
+    size: A4 landscape;
+    margin: 8mm 10mm;
+  }
+
+  .page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  * {
+    font-family: "Amiri", serif !important;
+  }
+}
