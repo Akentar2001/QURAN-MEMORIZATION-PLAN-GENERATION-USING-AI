@@ -12,7 +12,7 @@ function getRowBgColor(num: number): string {
 
 export default function PlanTable({ assignments }: Props) {
   return (
-    <table className="w-full border-collapse text-sm" dir="rtl">
+    <table className="w-full border-collapse text-sm plan-table-print" dir="rtl">
       <thead>
         <tr>
           <th className="border border-gray-400 px-2 py-1.5 bg-gray-200 text-[var(--color-navy)]">

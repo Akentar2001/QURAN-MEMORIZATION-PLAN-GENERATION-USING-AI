@@ -11,7 +11,7 @@ interface Props {
 export default function PrintableSheet({ plan, isLast }: Props) {
   return (
     <>
-      <div className="mb-8 print:mb-0">
+      <div className="mb-8 print:mb-0 printable-sheet">
         <PlanHeader
           studentName={plan.studentName}
           halaqah={plan.halaqah}

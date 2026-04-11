@@ -35,7 +35,7 @@ export default function PreviewClient() {
         </Button>
       </div>
 
-      <div ref={contentRef} className="p-4 md:p-8 max-w-6xl mx-auto">
+      <div ref={contentRef} className="p-4 md:p-8 max-w-6xl mx-auto print:p-0 print:max-w-none">
         {plans.map((plan, index) => (
           <PrintableSheet
             key={plan.studentId}
