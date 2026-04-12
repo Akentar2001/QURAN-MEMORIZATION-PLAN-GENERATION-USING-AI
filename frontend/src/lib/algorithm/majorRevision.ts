@@ -44,27 +44,45 @@ function findFirstFreePosition(
 }
 
 /**
+ * Check if a position is past the end of the Quran in a given direction.
+ */
+function isPastEnd(pos: QuranPosition, direction: Direction): boolean {
+  if (direction === "ascending") {
+    const lastSurah = getSurahByNumber(TOTAL_SURAHS);
+    return pos.surah > TOTAL_SURAHS ||
+      (pos.surah === TOTAL_SURAHS && pos.ayah > lastSurah.ayahCount);
+  } else {
+    return pos.surah < 1 || (pos.surah === 1 && pos.ayah < 1);
+  }
+}
+
+/**
  * Calculate the major revision section for one assignment.
  *
  * Major revision moves in the OPPOSITE direction to memorization.
- * It skips any ayahs that overlap with the CURRENT ASSIGNMENT's memorization
- * or minor revision ranges (not the entire accumulated memorized range).
+ * It skips any ayahs that overlap with the CURRENT assignment's memorization
+ * or minor revision ranges.
  *
- * When reaching a Quran boundary, it wraps around and restarts from the
- * first free position outside the exclusion ranges.
+ * When reaching a Quran boundary (end for ascending major, start for descending),
+ * it wraps around to the user's memStartSurah (the starting point of memorization),
+ * treating major review as a cycle around the student's memorized content.
  *
  * @param cursor - The major revision cursor (where to start)
  * @param majRevPages - Number of pages for major revision
  * @param memDirection - The memorization direction (major goes OPPOSITE)
- * @param currentMemRange - THIS assignment's new memorization range (not accumulated!)
+ * @param currentMemRange - THIS assignment's new memorization range
  * @param minorRange - THIS assignment's minor revision range (null if none)
+ * @param memStartSurah - The initial memorization start surah (used as wraparound point)
+ * @param memStartAyah - The initial memorization start ayah
  */
 export function calculateMajorRevision(
   cursor: QuranPosition,
   majRevPages: number,
   memDirection: Direction,
   currentMemRange: PositionRange | null,
-  minorRange: PositionRange | null
+  minorRange: PositionRange | null,
+  memStartSurah: number,
+  memStartAyah: number
 ): MajorRevisionResult | null {
   if (majRevPages <= 0) {
     return null;
@@ -79,20 +97,26 @@ export function calculateMajorRevision(
   if (currentMemRange) exclusionRanges.push(currentMemRange);
   if (minorRange) exclusionRanges.push(minorRange);
 
-  // Find the first free position starting from cursor
-  let startPos = findFirstFreePosition(cursor, majDirection, exclusionRanges);
+  // Check if cursor is past the end of Quran in major direction — wraparound needed
+  let startPos: QuranPosition | null;
 
-  // If not found, try wrapping around from the other end
-  if (startPos === null) {
-    const wrapStart: QuranPosition =
-      majDirection === "ascending"
-        ? { surah: 1, ayah: 1 }
-        : { surah: TOTAL_SURAHS, ayah: getSurahByNumber(TOTAL_SURAHS).ayahCount };
-
+  if (isPastEnd(cursor, majDirection)) {
+    // Wraparound: restart from memStartSurah
+    const wrapStart: QuranPosition = { surah: memStartSurah, ayah: memStartAyah };
     startPos = findFirstFreePosition(wrapStart, majDirection, exclusionRanges);
+  } else {
+    // Find the first free position starting from cursor
+    startPos = findFirstFreePosition(cursor, majDirection, exclusionRanges);
+
+    // If cursor search returns null (hit boundary), wraparound to memStartSurah
     if (startPos === null) {
-      return null; // No free material anywhere
+      const wrapStart: QuranPosition = { surah: memStartSurah, ayah: memStartAyah };
+      startPos = findFirstFreePosition(wrapStart, majDirection, exclusionRanges);
     }
+  }
+
+  if (startPos === null) {
+    return null; // No free material anywhere
   }
 
   // Advance by majRevPages from the free start position
@@ -101,18 +125,18 @@ export function calculateMajorRevision(
     return null;
   }
 
-  // Normalized range for consistency
+  // Normalized range
   const range = normalizeRange(startPos, endPos);
 
   // New cursor: one ayah past endPos in the major direction
   let newCursor = getNextAyah(endPos, majDirection);
 
   if (newCursor === null) {
-    // Reached boundary — wrap around for next time
-    newCursor =
-      majDirection === "ascending"
-        ? { surah: 1, ayah: 1 }
-        : { surah: TOTAL_SURAHS, ayah: getSurahByNumber(TOTAL_SURAHS).ayahCount };
+    // Reached boundary — signal wraparound by setting cursor past the end
+    // The next call will detect this and wrap to memStartSurah
+    newCursor = majDirection === "ascending"
+      ? { surah: TOTAL_SURAHS + 1, ayah: 1 } // sentinel: past the end
+      : { surah: 0, ayah: 0 }; // sentinel: past the start
   }
 
   return {

@@ -1,57 +1,94 @@
-import type { QuranPosition, PositionRange, Direction } from "@/lib/quran/types";
-import { advanceByPages, getNextAyah, normalizeRange } from "./helpers";
+import type { QuranPosition, PositionRange } from "@/lib/quran/types";
+import { getAyahPage } from "@/lib/quran/ayahPages";
+import { comparePositions } from "./helpers";
 
 /**
- * Calculate the minor revision section for one assignment.
+ * Calculate how many pages a range covers.
+ */
+function calculateSessionPages(range: PositionRange): number {
+  const startPage = getAyahPage(range.start.surah, range.start.ayah);
+  const endPage = getAyahPage(range.end.surah, range.end.ayah);
+  return endPage - startPage + 1;
+}
+
+export interface MinorRevisionResult {
+  from: QuranPosition;
+  to: QuranPosition;
+  range: PositionRange;
+}
+
+/**
+ * Calculate the minor revision as a rolling window over previous memorization sessions.
  *
- * Minor revision covers recently memorized material adjacent to the current
- * memorization start, going in the OPPOSITE direction (into already-memorized territory).
+ * Starts with the most recent session (previous assignment's memorization)
+ * and adds older sessions backward until reaching the target page count
+ * (with closest-fit at the boundary).
  *
- * For descending memorization: minor revision goes ASCENDING from memStart
- *   (reviewing the surahs the student already memorized above the current position)
- * For ascending memorization: minor revision goes DESCENDING from memStart
+ * Display format:
+ *   from = first ayah of the chronologically oldest included session
+ *   to   = last ayah of the chronologically latest included session
  *
- * @param memStart - Where memorization started FOR THIS ASSIGNMENT (the cursor before advancing)
- * @param minorRevPages - Number of pages for minor revision
- * @param direction - The memorization direction (minor goes OPPOSITE)
- * @param assignmentNumber - Current assignment number (1-30)
- * @returns Display from/to + normalized range, or null for assignment 1
+ * For ascending memorization: from < to in Quran order (natural)
+ * For descending memorization across surah boundaries: from > to in Quran order
+ * (matches the student's direction of progression)
+ *
+ * @param previousSessions - Previous memorization ranges in chronological order (oldest first)
+ * @param minorRevPages - Target number of pages
+ * @returns Minor revision result, or null if no previous sessions
  */
 export function calculateMinorRevision(
-  memStart: QuranPosition,
-  minorRevPages: number,
-  direction: Direction,
-  assignmentNumber: number
-): { from: QuranPosition; to: QuranPosition; range: PositionRange } | null {
-  // Assignment 1: no material to revise yet
-  if (assignmentNumber <= 1) {
+  previousSessions: PositionRange[],
+  minorRevPages: number
+): MinorRevisionResult | null {
+  if (previousSessions.length === 0 || minorRevPages <= 0) {
     return null;
   }
 
-  if (minorRevPages <= 0) {
-    return null;
+  // Reverse to work from latest backward
+  const sessions = [...previousSessions].reverse();
+  const latest = sessions[0];
+
+  let totalPages = calculateSessionPages(latest);
+  const included: PositionRange[] = [latest];
+
+  // Add older sessions until reaching minorRevPages (closest-fit)
+  for (let i = 1; i < sessions.length; i++) {
+    const session = sessions[i];
+    const sessionPages = calculateSessionPages(session);
+    const potentialTotal = totalPages + sessionPages;
+
+    if (potentialTotal > minorRevPages) {
+      // Closest-fit check: is the current total closer or is adding this closer?
+      const diffWith = Math.abs(potentialTotal - minorRevPages);
+      const diffWithout = Math.abs(minorRevPages - totalPages);
+      if (diffWithout < diffWith) break;
+    }
+
+    included.push(session);
+    totalPages = potentialTotal;
+
+    if (totalPages >= minorRevPages) break;
   }
 
-  // Minor revision goes in the OPPOSITE direction of memorization
-  // into already-memorized territory
-  const revDirection: Direction = direction === "ascending" ? "descending" : "ascending";
+  // included[0] = latest chronologically, included[last] = oldest chronologically
+  const chronoLatest = included[0];
+  const chronoOldest = included[included.length - 1];
 
-  // Start from the ayah adjacent to memStart in the opposite direction
-  const revStart = getNextAyah(memStart, revDirection);
-  if (revStart === null) {
-    return null;
+  // Display: from = start of chronologically oldest, to = end of chronologically latest
+  const from = chronoOldest.start;
+  const to = chronoLatest.end;
+
+  // Normalized range (union of all included) for overlap checks
+  let minPos = included[0].start;
+  let maxPos = included[0].end;
+  for (const r of included) {
+    if (comparePositions(r.start, minPos) < 0) minPos = r.start;
+    if (comparePositions(r.end, maxPos) > 0) maxPos = r.end;
   }
 
-  // Advance by minorRevPages in the revision direction
-  const revEnd = advanceByPages(revStart, minorRevPages, revDirection);
-  if (revEnd === null) {
-    return null;
-  }
-
-  // Normalized range for overlap checks
-  const range = normalizeRange(revStart, revEnd);
-
-  // Display: for descending memorization, minor goes ascending (higher surahs)
-  // from = revStart (adjacent to mem), to = revEnd (further into memorized territory)
-  return { from: revStart, to: revEnd, range };
+  return {
+    from,
+    to,
+    range: { start: minPos, end: maxPos },
+  };
 }

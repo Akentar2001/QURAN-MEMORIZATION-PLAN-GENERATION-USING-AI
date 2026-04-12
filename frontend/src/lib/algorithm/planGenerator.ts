@@ -3,6 +3,7 @@ import type {
   StudentPlan,
   AssignmentRow,
   QuranPosition,
+  PositionRange,
 } from "@/lib/quran/types";
 import { ASSIGNMENTS_COUNT } from "@/lib/quran/constants";
 import { getSurahByNumber } from "@/lib/quran/surahs";
@@ -45,6 +46,9 @@ export function generatePlan(config: StudentConfig): StudentPlan {
     ayah: config.majRevStartAyah,
   };
 
+  // Track all previous memorization sessions for minor revision rolling window
+  const previousSessions: PositionRange[] = [];
+
   for (let i = 1; i <= ASSIGNMENTS_COUNT; i++) {
     const row: AssignmentRow = {
       assignmentNumber: i,
@@ -57,7 +61,6 @@ export function generatePlan(config: StudentConfig): StudentPlan {
     };
 
     // 1. New memorization
-    const memStartForThisAssignment = { ...memCursor };
     const memResult = calculateNewMemorization(
       memCursor,
       config.linesPerSession,
@@ -70,12 +73,10 @@ export function generatePlan(config: StudentConfig): StudentPlan {
       memCursor = memResult.newCursor;
     }
 
-    // 2. Minor revision (covers recently memorized material)
+    // 2. Minor revision - rolling window over previous sessions (not including current)
     const minorResult = calculateMinorRevision(
-      memStartForThisAssignment,
-      config.minorRevPages,
-      config.direction,
-      i
+      previousSessions,
+      config.minorRevPages
     );
 
     if (minorResult) {
@@ -84,13 +85,14 @@ export function generatePlan(config: StudentConfig): StudentPlan {
     }
 
     // 3. Major revision
-    // IMPORTANT: exclusion uses only THIS assignment's ranges, not accumulated
     const majResult = calculateMajorRevision(
       majRevCursor,
       config.majRevPages,
       config.direction,
-      memResult?.range ?? null,   // current assignment's memorization only
-      minorResult?.range ?? null  // current assignment's minor revision only
+      memResult?.range ?? null,
+      minorResult?.range ?? null,
+      config.memStartSurah,
+      config.memStartAyah
     );
 
     if (majResult) {
@@ -100,6 +102,11 @@ export function generatePlan(config: StudentConfig): StudentPlan {
     }
 
     assignments.push(row);
+
+    // Add this assignment's memorization to previousSessions for next iteration
+    if (memResult) {
+      previousSessions.push(memResult.range);
+    }
   }
 
   return {

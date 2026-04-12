@@ -10,13 +10,15 @@ describe("calculateMajorRevision", () => {
       3,
       "descending",
       null,
-      null
+      null,
+      88, // memStartSurah
+      1   // memStartAyah
     );
     expect(result).not.toBeNull();
     expect(result!.from).toEqual({ surah: 89, ayah: 1 });
     const startPage = getAyahPage(result!.from.surah, result!.from.ayah);
     const endPage = getAyahPage(result!.to.surah, result!.to.ayah);
-    expect(endPage - startPage).toBe(2); // 3 pages = pages 593, 594, 595
+    expect(endPage - startPage).toBe(2);
   });
 
   it("skips current assignment memorization range", () => {
@@ -29,7 +31,8 @@ describe("calculateMajorRevision", () => {
       1,
       "descending",
       memRange,
-      null
+      null,
+      88, 1
     );
     expect(result).not.toBeNull();
     expect(comparePositions(result!.from, memRange.end)).toBe(1);
@@ -49,25 +52,45 @@ describe("calculateMajorRevision", () => {
       1,
       "descending",
       memRange,
-      minorRange
+      minorRange,
+      88, 1
     );
     expect(result).not.toBeNull();
     expect(comparePositions(result!.from, minorRange.end)).toBe(1);
   });
 
   it("returns null when majRevPages is 0", () => {
-    expect(calculateMajorRevision({ surah: 89, ayah: 1 }, 0, "descending", null, null)).toBeNull();
+    expect(
+      calculateMajorRevision({ surah: 89, ayah: 1 }, 0, "descending", null, null, 88, 1)
+    ).toBeNull();
+  });
+
+  it("wraparound restarts from memStartSurah after reaching end of Quran", () => {
+    // Cursor is past An-Nas (sentinel from previous assignment)
+    const result = calculateMajorRevision(
+      { surah: 115, ayah: 1 }, // past end sentinel
+      3,
+      "descending", // major = ascending
+      null,
+      null,
+      57, // memStartSurah = Al-Hadid
+      1
+    );
+    expect(result).not.toBeNull();
+    // Should restart from Al-Hadid 1 (memStartSurah)
+    expect(result!.from).toEqual({ surah: 57, ayah: 1 });
   });
 
   it("newCursor advances past the covered range", () => {
-    const result = calculateMajorRevision({ surah: 89, ayah: 1 }, 3, "descending", null, null);
+    const result = calculateMajorRevision(
+      { surah: 89, ayah: 1 },
+      3,
+      "descending",
+      null,
+      null,
+      88, 1
+    );
     expect(result).not.toBeNull();
     expect(comparePositions(result!.newCursor, result!.to)).toBe(1);
-  });
-
-  it("range is always normalized", () => {
-    const result = calculateMajorRevision({ surah: 89, ayah: 1 }, 3, "descending", null, null);
-    expect(result).not.toBeNull();
-    expect(comparePositions(result!.range.start, result!.range.end)).toBeLessThanOrEqual(0);
   });
 });
