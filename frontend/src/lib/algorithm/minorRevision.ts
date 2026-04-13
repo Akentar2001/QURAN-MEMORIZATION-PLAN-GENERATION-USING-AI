@@ -1,94 +1,93 @@
-import type { QuranPosition, PositionRange } from "@/lib/quran/types";
+import type { QuranPosition, PositionRange, Direction } from "@/lib/quran/types";
+import { LINES_PER_PAGE } from "@/lib/quran/constants";
+import { getSurahByNumber } from "@/lib/quran/surahs";
 import { getAyahPage } from "@/lib/quran/ayahPages";
-import { comparePositions } from "./helpers";
-
-/**
- * Calculate how many pages a range covers.
- */
-function calculateSessionPages(range: PositionRange): number {
-  const startPage = getAyahPage(range.start.surah, range.start.ayah);
-  const endPage = getAyahPage(range.end.surah, range.end.ayah);
-  return endPage - startPage + 1;
-}
+import { advanceByPages, comparePositions, normalizeRange } from "./helpers";
 
 export interface MinorRevisionResult {
+  /** Oldest-in-time position in the zone (start of review in reading order). */
   from: QuranPosition;
+  /** Newest-in-time position (the frontier — end of review in reading order). */
   to: QuranPosition;
+  /** Normalized Quran-order range (min/max) for overlap checks. */
   range: PositionRange;
 }
 
 /**
- * Calculate the minor revision as a rolling window over previous memorization sessions.
+ * Volume-based rolling window: covers the last `minorRevPages` pages of memorized
+ * material ending at the frontier, walking backward through memorization time.
  *
- * Starts with the most recent session (previous assignment's memorization)
- * and adds older sessions backward until reaching the target page count
- * (with closest-fit at the boundary).
+ * Memorization time order:
+ *   - descending: surah N was memorized before surah N-1. Walking backward =
+ *     going to higher surah numbers (toward memStart).
+ *   - ascending: surah N was memorized before surah N+1. Walking backward =
+ *     going to lower surah numbers (toward memStart).
  *
- * Display format:
- *   from = first ayah of the chronologically oldest included session
- *   to   = last ayah of the chronologically latest included session
+ * Within a surah, memorization always goes ayah 1 → last ayah, so walking
+ * backward within a surah means going to lower ayah numbers.
  *
- * For ascending memorization: from < to in Quran order (natural)
- * For descending memorization across surah boundaries: from > to in Quran order
- * (matches the student's direction of progression)
- *
- * @param previousSessions - Previous memorization ranges in chronological order (oldest first)
- * @param minorRevPages - Target number of pages
- * @returns Minor revision result, or null if no previous sessions
+ * The page budget is measured in EXACT lines:
+ *   pages × 15 lines. Each chunk's line count = its page span × 15.
  */
 export function calculateMinorRevision(
-  previousSessions: PositionRange[],
-  minorRevPages: number
+  frontier: QuranPosition,
+  minorRevPages: number,
+  memStart: QuranPosition,
+  memDirection: Direction
 ): MinorRevisionResult | null {
-  if (previousSessions.length === 0 || minorRevPages <= 0) {
-    return null;
-  }
+  if (minorRevPages <= 0) return null;
 
-  // Reverse to work from latest backward
-  const sessions = [...previousSessions].reverse();
-  const latest = sessions[0];
+  let linesRemaining = minorRevPages * LINES_PER_PAGE;
 
-  let totalPages = calculateSessionPages(latest);
-  const included: PositionRange[] = [latest];
+  // Current chunk: from the start of the frontier's surah (or memStart.ayah if
+  // same surah) up to the frontier.
+  let curSurah = frontier.surah;
+  let chunkEnd: QuranPosition = frontier;
+  let oldest: QuranPosition = frontier;
 
-  // Add older sessions until reaching minorRevPages (closest-fit)
-  for (let i = 1; i < sessions.length; i++) {
-    const session = sessions[i];
-    const sessionPages = calculateSessionPages(session);
-    const potentialTotal = totalPages + sessionPages;
+  // Safety bound
+  let safety = 120;
+  while (linesRemaining > 0 && safety-- > 0) {
+    const chunkStartAyah = curSurah === memStart.surah ? memStart.ayah : 1;
+    const chunkStart: QuranPosition = { surah: curSurah, ayah: chunkStartAyah };
 
-    if (potentialTotal > minorRevPages) {
-      // Closest-fit check: is the current total closer or is adding this closer?
-      const diffWith = Math.abs(potentialTotal - minorRevPages);
-      const diffWithout = Math.abs(minorRevPages - totalPages);
-      if (diffWithout < diffWith) break;
+    const chunkStartPage = getAyahPage(chunkStart.surah, chunkStart.ayah);
+    const chunkEndPage = getAyahPage(chunkEnd.surah, chunkEnd.ayah);
+    const chunkLines = (chunkEndPage - chunkStartPage + 1) * LINES_PER_PAGE;
+
+    if (chunkLines <= linesRemaining) {
+      // Include the whole chunk
+      linesRemaining -= chunkLines;
+      oldest = chunkStart;
+
+      // Reached memStart — no older memorized material.
+      if (curSurah === memStart.surah) break;
+
+      // Step backward in memorization time to the previous surah.
+      // Descending mem: previous in time = higher surah number.
+      // Ascending mem: previous in time = lower surah number.
+      const nextSurah = memDirection === "descending" ? curSurah + 1 : curSurah - 1;
+      if (nextSurah < 1 || nextSurah > 114) break;
+      curSurah = nextSurah;
+      const sInfo = getSurahByNumber(curSurah);
+      chunkEnd = { surah: curSurah, ayah: sInfo.ayahCount };
+    } else {
+      // Partial chunk: use the remaining budget to walk backward within this chunk.
+      const pagesRemaining = linesRemaining / LINES_PER_PAGE;
+      // Walk backward from chunkEnd by pagesRemaining pages (descending in page order)
+      const partial = advanceByPages(chunkEnd, pagesRemaining, "descending");
+      if (partial) {
+        const actualPartial =
+          comparePositions(partial, chunkStart) < 0 ? chunkStart : partial;
+        oldest = actualPartial;
+      }
+      break;
     }
-
-    included.push(session);
-    totalPages = potentialTotal;
-
-    if (totalPages >= minorRevPages) break;
-  }
-
-  // included[0] = latest chronologically, included[last] = oldest chronologically
-  const chronoLatest = included[0];
-  const chronoOldest = included[included.length - 1];
-
-  // Display: from = start of chronologically oldest, to = end of chronologically latest
-  const from = chronoOldest.start;
-  const to = chronoLatest.end;
-
-  // Normalized range (union of all included) for overlap checks
-  let minPos = included[0].start;
-  let maxPos = included[0].end;
-  for (const r of included) {
-    if (comparePositions(r.start, minPos) < 0) minPos = r.start;
-    if (comparePositions(r.end, maxPos) > 0) maxPos = r.end;
   }
 
   return {
-    from,
-    to,
-    range: { start: minPos, end: maxPos },
+    from: oldest,
+    to: frontier,
+    range: normalizeRange(oldest, frontier),
   };
 }

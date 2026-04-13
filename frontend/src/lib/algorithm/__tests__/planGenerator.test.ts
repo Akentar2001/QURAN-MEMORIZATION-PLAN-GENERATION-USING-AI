@@ -18,9 +18,9 @@ describe("generatePlan", () => {
     majRevPages: 3,
   };
 
-  it("generates 30 assignments", () => {
+  it("generates 40 assignments", () => {
     const plan = generatePlan(ghashiyahConfig);
-    expect(plan.assignments).toHaveLength(30);
+    expect(plan.assignments).toHaveLength(40);
   });
 
   it("includes student info in plan", () => {
@@ -57,9 +57,9 @@ describe("generatePlan", () => {
   it("assignment 1 has major revision starting from Al-Fajr", () => {
     const plan = generatePlan(ghashiyahConfig);
     const a1 = plan.assignments[0];
-    expect(a1.majorFrom).not.toBeNull();
+    expect(a1.majorBlocks[0]?.from ?? null).not.toBeNull();
     // Major goes ascending from Al-Fajr
-    expect(a1.majorFrom).toContain("الفجر");
+    expect(a1.majorBlocks[0]?.from ?? null).toContain("الفجر");
   });
 
   it("assignment 2 has minor revision", () => {
@@ -88,13 +88,13 @@ describe("generatePlan", () => {
     // After several assignments of 3 pages each, should progress significantly
     const a1 = plan.assignments[0];
     const a3 = plan.assignments[2];
-    expect(a1.majorFrom).not.toBeNull();
-    expect(a3.majorFrom).not.toBeNull();
+    expect(a1.majorBlocks[0]?.from ?? null).not.toBeNull();
+    expect(a3.majorBlocks[0]?.from ?? null).not.toBeNull();
     // The ranges should be different
-    expect(a1.majorFrom).not.toBe(a3.majorFrom);
+    expect(a1.majorBlocks[0]?.from ?? null).not.toBe(a3.majorBlocks[0]?.from ?? null);
   });
 
-  it("all assignment numbers are sequential 1-30", () => {
+  it("all assignment numbers are sequential 1-40", () => {
     const plan = generatePlan(ghashiyahConfig);
     plan.assignments.forEach((a, i) => {
       expect(a.assignmentNumber).toBe(i + 1);
@@ -119,7 +119,7 @@ describe("generatePlan", () => {
     };
 
     const plan = generatePlan(ascConfig);
-    expect(plan.assignments).toHaveLength(30);
+    expect(plan.assignments).toHaveLength(40);
 
     const a1 = plan.assignments[0];
     expect(a1.memFrom).toContain("البقرة");
@@ -133,19 +133,22 @@ describe("generatePlan", () => {
     // Assignment 1: memorize around Al-Ghashiyah, minor = null, major from Al-Fajr
     const a1 = plan.assignments[0];
     expect(a1.minorFrom).toBeNull();
-    expect(a1.majorFrom).toContain("الفجر");
+    expect(a1.majorBlocks[0]?.from ?? null).toContain("الفجر");
 
     // Assignment 2: has minor revision, major continues
     const a2 = plan.assignments[1];
     expect(a2.memFrom).not.toBeNull();
     expect(a2.minorFrom).not.toBeNull();
-    expect(a2.majorFrom).not.toBeNull();
+    expect(a2.majorBlocks[0]?.from ?? null).not.toBeNull();
 
-    // Major revision should advance: assignment 1 and 2 should have different major ranges
-    expect(a1.majorTo).not.toBe(a2.majorFrom);
+    // Both assignments should have a major revision block. (With a small
+    // Known Universe — here just Al-Fajr — assignments may repeat the same
+    // material until the student has memorized enough to grow the universe.)
+    expect(a1.majorBlocks.length).toBeGreaterThan(0);
+    expect(a2.majorBlocks.length).toBeGreaterThan(0);
 
     // All 30 assignments should have memorization
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 40; i++) {
       const a = plan.assignments[i];
       expect(a.memFrom).not.toBeNull();
       expect(a.memTo).not.toBeNull();
@@ -170,14 +173,14 @@ describe("generatePlan", () => {
     };
 
     const plan = generatePlan(nearEndConfig);
-    expect(plan.assignments).toHaveLength(30);
+    expect(plan.assignments).toHaveLength(40);
 
     // After a few assignments of 3 pages ascending from Al-Falaq,
     // major revision should reach An-Nas and then wrap.
     // We just verify all assignments have major revision (no nulls)
     // and that eventually the surah names change (wraparound happened).
     const majorFroms = plan.assignments
-      .map((a) => a.majorFrom)
+      .map((a) => a.majorBlocks[0]?.from ?? null)
       .filter((f) => f !== null);
     expect(majorFroms.length).toBeGreaterThan(0);
   });
@@ -199,7 +202,7 @@ describe("generatePlan", () => {
     };
 
     const plan = generatePlan(fatihaConfig);
-    expect(plan.assignments).toHaveLength(30);
+    expect(plan.assignments).toHaveLength(40);
     // Assignment 1 should start with Al-Fatiha
     expect(plan.assignments[0].memFrom).toContain("الفاتحة");
   });

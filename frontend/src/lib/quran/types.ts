@@ -36,14 +36,18 @@ export interface StudentConfig {
   majRevPages: number;
 }
 
+export interface MajorBlock {
+  from: string;
+  to: string;
+}
+
 export interface AssignmentRow {
   assignmentNumber: number;
   memFrom: string | null;
   memTo: string | null;
   minorFrom: string | null;
   minorTo: string | null;
-  majorFrom: string | null;
-  majorTo: string | null;
+  majorBlocks: MajorBlock[];
 }
 
 export interface StudentPlan {

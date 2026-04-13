@@ -1,6 +1,13 @@
 import type { QuranPosition, Direction, PositionRange } from "@/lib/quran/types";
 import { LINES_PER_PAGE } from "@/lib/quran/constants";
-import { getNextAyah, normalizeRange, advanceByPages } from "./helpers";
+import {
+  getNextAyah,
+  normalizeRange,
+  advanceByPages,
+  computeSnapThreshold,
+  maybeSnapToSurahBoundary,
+  comparePositions,
+} from "./helpers";
 import { getAyahPage } from "@/lib/quran/ayahPages";
 import { getSurahByNumber } from "@/lib/quran/surahs";
 
@@ -9,6 +16,8 @@ export interface NewMemorizationResult {
   to: QuranPosition;
   range: PositionRange;
   newCursor: QuranPosition;
+  /** The chronologically last ayah memorized in this session (reading-time order). */
+  frontier: QuranPosition;
 }
 
 /**
@@ -90,14 +99,34 @@ export function calculateNewMemorization(
       );
 
       if (partialEnd) {
+        // Smart snapping: if we'd leave only a few ayahs before the end of
+        // this surah, finish the surah instead of splitting it across days.
+        const snapThreshold = computeSnapThreshold(linesPerSession);
+        const snapped = maybeSnapToSurahBoundary(partialEnd, "ascending", snapThreshold);
+        const didSnap = comparePositions(snapped, partialEnd) !== 0;
+
         const partialStart = { surah: currentSurah, ayah: currentAyah };
         if (currentSurah < rangeLowest.surah || (currentSurah === rangeLowest.surah && currentAyah < rangeLowest.ayah)) {
           rangeLowest = partialStart;
         }
-        if (partialEnd.surah > rangeHighest.surah || (partialEnd.surah === rangeHighest.surah && partialEnd.ayah > rangeHighest.ayah)) {
-          rangeHighest = partialEnd;
+        if (snapped.surah > rangeHighest.surah || (snapped.surah === rangeHighest.surah && snapped.ayah > rangeHighest.ayah)) {
+          rangeHighest = snapped;
         }
-        lastPos = partialEnd;
+        lastPos = snapped;
+
+        if (didSnap) {
+          // We've finished the current surah — mimic the whole-surah branch
+          // so that newCursor advances into the next surah in reading order.
+          if (direction === "ascending") {
+            if (currentSurah < 114) {
+              currentSurah++;
+              currentAyah = 1;
+            }
+          } else if (currentSurah > 1) {
+            currentSurah--;
+            currentAyah = 1;
+          }
+        }
       }
       break;
     }
@@ -133,5 +162,5 @@ export function calculateNewMemorization(
     }
   }
 
-  return { from, to, range, newCursor };
+  return { from, to, range, newCursor, frontier: lastPos };
 }

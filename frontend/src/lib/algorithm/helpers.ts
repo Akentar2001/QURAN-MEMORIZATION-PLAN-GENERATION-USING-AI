@@ -114,6 +114,31 @@ export function advanceByPages(
     if (ayahsOnPartialPage.length === 0) {
       return getPageEndAyah(lastFullPage);
     }
+
+    // When wholePages === 0 the partial page IS the start page.
+    // We must advance relative to the start ayah's offset within the page,
+    // not from the page's beginning — otherwise we can land before the cursor.
+    // If advancing overflows the start page, spill onto the next page.
+    if (wholePages === 0) {
+      const startIdxOnPage = ayahsOnPartialPage.findIndex(
+        (p) => p.surah === start.surah && p.ayah === start.ayah
+      );
+      const offsetFromStart = startIdxOnPage >= 0 ? startIdxOnPage : 0;
+      const advance = Math.max(1, Math.round(fraction * ayahsOnPartialPage.length));
+      const targetIdx = offsetFromStart + advance - 1;
+      if (targetIdx < ayahsOnPartialPage.length) {
+        return ayahsOnPartialPage[targetIdx];
+      }
+      // Overflow: we used up the rest of the start page — spill into the next page.
+      const overflow = targetIdx - (ayahsOnPartialPage.length - 1);
+      const nextPage = partialPage + 1;
+      if (nextPage > 604) return { surah: 114, ayah: SURAHS[113].ayahCount };
+      const ayahsOnNextPage = getAyahsOnPage(nextPage);
+      if (ayahsOnNextPage.length === 0) return getPageEndAyah(partialPage);
+      const nextIdx = Math.min(ayahsOnNextPage.length - 1, overflow - 1);
+      return ayahsOnNextPage[nextIdx];
+    }
+
     const idx = Math.max(0, Math.round(fraction * ayahsOnPartialPage.length) - 1);
     return ayahsOnPartialPage[idx];
   } else {
@@ -134,6 +159,22 @@ export function advanceByPages(
     if (ayahsOnPartialPage.length === 0) {
       return getPageStartAyah(lastFullPage);
     }
+
+    // When wholePages === 0 the partial page IS the start page.
+    // We must advance relative to the start ayah's offset, going backward.
+    if (wholePages === 0) {
+      const startIdxOnPage = ayahsOnPartialPage.findIndex(
+        (p) => p.surah === start.surah && p.ayah === start.ayah
+      );
+      const offsetFromEnd = startIdxOnPage >= 0
+        ? ayahsOnPartialPage.length - 1 - startIdxOnPage
+        : 0;
+      const advance = Math.max(1, Math.round(fraction * ayahsOnPartialPage.length));
+      const fromEnd = offsetFromEnd + advance;
+      const targetIdx = Math.max(0, ayahsOnPartialPage.length - fromEnd - 1);
+      return ayahsOnPartialPage[targetIdx];
+    }
+
     // From the end of the page, pick the fraction point
     const fromEnd = Math.round(fraction * ayahsOnPartialPage.length);
     const idx = Math.max(0, ayahsOnPartialPage.length - fromEnd);
@@ -150,4 +191,65 @@ export function normalizeRange(a: QuranPosition, b: QuranPosition): PositionRang
     return { start: a, end: b };
   }
   return { start: b, end: a };
+}
+
+/**
+ * Compute the snap threshold in lines for a session budget, capped to [6, 10]
+ * or 15% of the budget — whichever the user would reasonably tolerate as "a
+ * few extra ayahs to finish the surah".
+ */
+export function computeSnapThreshold(budgetLines: number): number {
+  return Math.min(10, Math.max(6, Math.floor(budgetLines * 0.15)));
+}
+
+/**
+ * If a stop position is within `thresholdAyahs` of a surah boundary in the
+ * reading direction and the boundary is on the same or next page, extend the
+ * stop to the surah boundary. Returns the possibly-extended position.
+ *
+ * - ascending: snaps forward to the last ayah of the surah
+ * - descending: snaps backward to ayah 1 of the surah
+ */
+export function maybeSnapToSurahBoundary(
+  stopPos: QuranPosition,
+  readDir: Direction,
+  thresholdAyahs: number
+): QuranPosition {
+  const surah = getSurahByNumber(stopPos.surah);
+
+  if (readDir === "ascending") {
+    if (stopPos.ayah >= surah.ayahCount) return stopPos;
+    const remaining = surah.ayahCount - stopPos.ayah;
+    if (remaining > thresholdAyahs) return stopPos;
+    const stopPage = getAyahPage(stopPos.surah, stopPos.ayah);
+    const endPage = getAyahPage(stopPos.surah, surah.ayahCount);
+    if (endPage - stopPage > 1) return stopPos;
+    return { surah: stopPos.surah, ayah: surah.ayahCount };
+  }
+
+  if (stopPos.ayah <= 1) return stopPos;
+  const before = stopPos.ayah - 1;
+  if (before > thresholdAyahs) return stopPos;
+  const stopPage = getAyahPage(stopPos.surah, stopPos.ayah);
+  const startPage = getAyahPage(stopPos.surah, 1);
+  if (stopPage - startPage > 1) return stopPos;
+  return { surah: stopPos.surah, ayah: 1 };
+}
+
+/**
+ * Format a range as a clean display pair: if `from` is ayah 1 and `to` is the
+ * last ayah of the same surah, both fields become the surah name alone. The UI
+ * can detect `from === to` and render a single label.
+ */
+export function formatRangeClean(
+  from: QuranPosition,
+  to: QuranPosition
+): { from: string; to: string } {
+  if (from.surah === to.surah) {
+    const surah = getSurahByNumber(from.surah);
+    if (from.ayah === 1 && to.ayah === surah.ayahCount) {
+      return { from: surah.nameArabic, to: surah.nameArabic };
+    }
+  }
+  return { from: formatPosition(from), to: formatPosition(to) };
 }

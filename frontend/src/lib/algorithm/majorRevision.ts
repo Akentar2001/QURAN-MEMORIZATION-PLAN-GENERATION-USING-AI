@@ -1,5 +1,4 @@
 import type { QuranPosition, PositionRange, Direction } from "@/lib/quran/types";
-import { TOTAL_SURAHS } from "@/lib/quran/constants";
 import { getSurahByNumber } from "@/lib/quran/surahs";
 import { getAyahPage } from "@/lib/quran/ayahPages";
 import {
@@ -21,39 +20,75 @@ export interface MajorRevisionResult {
   newCursor: QuranPosition;
 }
 
-/** The terminal position of the review cycle in the review direction. */
-function cycleEnd(reviewDir: Direction): QuranPosition {
+/**
+ * The cycle terminus = the oldest edge of the Known Universe in the review
+ * direction. For descending mem (ascending review) this is the last ayah of
+ * the oldest historical surah (majRevStart). For ascending mem (descending
+ * review) this is ayah 1 of the oldest historical surah (still majRevStart,
+ * since ascending mem starts at low index and goes up).
+ *
+ * majRevStart is the student's oldest historical memorization boundary
+ * (e.g., "Juz Amma starting at An-Nas" → majRevStart = {114, 1}).
+ */
+function cycleTerminus(
+  majRevStart: QuranPosition,
+  reviewDir: Direction
+): QuranPosition {
   if (reviewDir === "ascending") {
-    const last = getSurahByNumber(TOTAL_SURAHS);
-    return { surah: TOTAL_SURAHS, ayah: last.ayahCount };
+    // Walk ends at the LAST ayah of the oldest surah (entire surah is in scope).
+    const surahInfo = getSurahByNumber(majRevStart.surah);
+    return { surah: majRevStart.surah, ayah: surahInfo.ayahCount };
   }
-  return { surah: 1, ayah: 1 };
+  // Ascending mem / descending review: walk ends at ayah 1 of the oldest surah.
+  return { surah: majRevStart.surah, ayah: 1 };
 }
 
 /**
- * The frontier is the newest memorized position as of this assignment —
- * the ayah closest to where today's new task is happening. The major
- * revision wraparound teleports here and walks in the review direction
- * back through the older memorized material.
+ * The frontier is the first memorized ayah past today's new task in the
+ * review direction. It is the entry point into the "older memorized" material
+ * that the walker will patrol.
  *
- * For descending memDir, today's new task moves toward lower surah indices,
- * so the newest ayah has the LOWEST index = memRange.start (after normalize).
- * For ascending memDir, the newest ayah has the HIGHEST index = memRange.end.
+ * For descending memDir (review = ascending): frontier = next ayah after
+ * memRange.start in ascending order. This lands inside the unmemorized tail
+ * of today's active surah, but that tail is marked as an excluded hole so
+ * walkWithSkips will teleport past it to the next fully-memorized surah.
  *
- * If memRange is null (defensive — should not happen in practice since
- * major revision is only called after new memorization runs), fall back to
- * the cycle start in the review direction.
+ * For ascending memDir (review = descending): frontier = next ayah before
+ * memRange.end in descending order.
  */
 function computeFrontier(
   memRange: PositionRange | null,
-  memDir: Direction
+  memDir: Direction,
+  majRevStart: QuranPosition
 ): QuranPosition {
   if (!memRange) {
-    return memDir === "descending"
-      ? { surah: TOTAL_SURAHS, ayah: getSurahByNumber(TOTAL_SURAHS).ayahCount }
-      : { surah: 1, ayah: 1 };
+    return majRevStart;
   }
-  return memDir === "descending" ? memRange.start : memRange.end;
+  const todayBoundary = memDir === "descending" ? memRange.start : memRange.end;
+  const reviewDir: Direction = memDir === "descending" ? "ascending" : "descending";
+  const next = getNextAyah(todayBoundary, reviewDir);
+  return next ?? todayBoundary;
+}
+
+/**
+ * The unmemorized hole is the tail of today's active surah that the student
+ * hasn't reached yet. For a student memorizing surah N with today's task
+ * covering ayahs 1..K, ayahs K+1..last are unmemorized and must be excluded
+ * from major review. Within a surah, memorization always proceeds ayah 1 →
+ * last, regardless of overall direction.
+ */
+function computeUnmemorizedHole(
+  memRange: PositionRange | null,
+  memDir: Direction
+): PositionRange | null {
+  if (!memRange) return null;
+  const activeSurahPos = memDir === "descending" ? memRange.start : memRange.end;
+  const surahInfo = getSurahByNumber(activeSurahPos.surah);
+  if (activeSurahPos.ayah >= surahInfo.ayahCount) return null;
+  return {
+    start: { surah: activeSurahPos.surah, ayah: activeSurahPos.ayah + 1 },
+    end: { surah: activeSurahPos.surah, ayah: surahInfo.ayahCount },
+  };
 }
 
 /** Returns true if `pos` is inside `range` (inclusive, Quran order). */
@@ -216,105 +251,101 @@ function pageSpan(
 }
 
 /**
- * Major revision with a continuous, persistent cursor that walks the
- * "free zone" — every memorized ayah minus the minor zone hole — in the
- * review direction. On reaching the cycle terminus (An-Nas for ascending
- * review, Al-Fatihah for descending review), the cursor teleports to the
- * frontier (the newest memorized ayah) and resumes walking in the same
- * review direction, treating the minor zone as a hole to skip over.
+ * Major revision confined to the student's Known Universe — the already-
+ * memorized content between the frontier (just past today's new task) and
+ * the oldest historical boundary (majRevStart).
  *
- * The cursor persists across assignments. Block 1 always continues from
- * where the previous assignment left off; on wraparound, block 2+ starts
- * at the current frontier.
+ * The walker patrols this universe in the review direction, treating the
+ * minor zone and today's unmemorized tail as holes to skip. It never
+ * enters unmemorized territory.
  *
- * Three cases:
- *   A. Clean run     — cursor + budget fits before terminus, no hole crossed
- *   B. Hole collision — budget would cross an excluded zone mid-walk
- *   C. Wraparound    — budget overruns the terminus
+ * If the cursor runs off the terminus mid-assignment, it wraps back to the
+ * frontier and continues. If the budget exceeds the size of the universe,
+ * the walker caps at the terminus and under-delivers the budget (no
+ * same-session repetition).
  *
  * @param cursor          persistent cursor position (seeded from majRevStart on W1)
  * @param majRevPages     Y pages to cover this assignment
  * @param memDirection    student's memorization direction (review is opposite)
  * @param minorZoneRange  normalized Quran-order range of the minor zone (or null)
  * @param memRange        normalized Quran-order range of today's new memorization (or null)
+ * @param majRevStart     the oldest historical memorization boundary (required)
  */
 export function calculateMajorRevision(
   cursor: QuranPosition,
   majRevPages: number,
   memDirection: Direction,
   minorZoneRange: PositionRange | null,
-  memRange: PositionRange | null = null
+  memRange: PositionRange | null,
+  majRevStart: QuranPosition
 ): MajorRevisionResult | null {
   if (majRevPages <= 0) return null;
 
   const reviewDir: Direction =
     memDirection === "descending" ? "ascending" : "descending";
-  const cEnd = cycleEnd(reviewDir);
-  const excluded: Array<PositionRange | null> = [minorZoneRange, memRange];
+  const terminus = cycleTerminus(majRevStart, reviewDir);
+  const unmemorizedHole = computeUnmemorizedHole(memRange, memDirection);
+  const excluded: Array<PositionRange | null> = [
+    minorZoneRange,
+    memRange,
+    unmemorizedHole,
+  ];
   const snapThreshold = computeSnapThreshold(majRevPages * LINES_PER_PAGE);
+  const frontier = computeFrontier(memRange, memDirection, majRevStart);
 
-  // Cursor is at or past the cycle terminus — either from a previous
-  // wraparound (the prior assignment stored `start` as a sentinel in
-  // walkWithSkips) or because the last assignment ended exactly on the
-  // terminus. Either way, start fresh from the frontier (block 1 is empty).
-  const cursorAtOrPastEnd =
+  // If the cursor is outside the Known Universe or at/past the terminus,
+  // reset to the frontier. This handles the first assignment (cursor seeded
+  // from majRevStart which is at or past terminus) and any stale sentinel.
+  const isPastTerminus =
     reviewDir === "ascending"
-      ? comparePositions(cursor, cEnd) >= 0
-      : comparePositions(cursor, cEnd) <= 0;
+      ? comparePositions(cursor, terminus) >= 0
+      : comparePositions(cursor, terminus) <= 0;
+  const isBeforeFrontier =
+    reviewDir === "ascending"
+      ? comparePositions(cursor, frontier) < 0
+      : comparePositions(cursor, frontier) > 0;
 
-  if (cursorAtOrPastEnd) {
-    const frontier = computeFrontier(memRange, memDirection);
+  let current = isPastTerminus || isBeforeFrontier ? frontier : cursor;
+
+  const blocks: MajorBlockRange[] = [];
+  let remaining = majRevPages;
+  let loopSafety = 5;
+
+  while (remaining > 0.001 && loopSafety-- > 0) {
     const walked = walkWithSkips(
-      frontier,
-      majRevPages,
+      current,
+      remaining,
       reviewDir,
       excluded,
-      cEnd,
+      terminus,
       snapThreshold
     );
-    return { blocks: walked.blocks, newCursor: walked.newCursor };
+    blocks.push(...walked.blocks);
+
+    const pagesEmitted = walked.blocks.reduce(
+      (sum, b) => sum + pageSpan(b.from, b.to, reviewDir),
+      0
+    );
+    remaining -= pagesEmitted;
+
+    if (remaining <= 0.001) {
+      return { blocks, newCursor: walked.newCursor };
+    }
+
+    // Walker hit the terminus before filling the budget. Per product rules
+    // (no same-assignment repetition), cap and stop. Next assignment will
+    // start fresh from the new frontier.
+    if (pagesEmitted === 0) break;
+
+    // If the walker emitted progress but still didn't fill the budget, it
+    // hit the terminus. Stop here (cap at universe size).
+    break;
   }
 
-  // Walk from the current cursor with the full budget. walkWithSkips
-  // handles both Case A (clean run) and Case B (hole collision) — it emits
-  // one block and stops if nothing is in the way, or splits around any
-  // holes it encounters.
-  const walked = walkWithSkips(
-    cursor,
-    majRevPages,
-    reviewDir,
-    excluded,
-    cEnd,
-    snapThreshold
-  );
+  const lastBlock = blocks[blocks.length - 1];
+  const newCursor = lastBlock
+    ? (getNextAyah(lastBlock.to, reviewDir) ?? lastBlock.to)
+    : frontier;
 
-  // Did the walk consume the full budget, or did it stop short because it
-  // hit the cycle terminus? If short, this is Case C (wraparound): keep
-  // block 1 (already in walked.blocks), then teleport to the frontier and
-  // walk the remaining budget.
-  const pagesEmitted = walked.blocks.reduce(
-    (sum, b) => sum + pageSpan(b.from, b.to, reviewDir),
-    0
-  );
-  const remaining = majRevPages - pagesEmitted;
-
-  if (remaining <= 0.001) {
-    return { blocks: walked.blocks, newCursor: walked.newCursor };
-  }
-
-  // Case C — wraparound. Teleport to frontier and walk the remaining budget.
-  const frontier = computeFrontier(memRange, memDirection);
-  const walked2 = walkWithSkips(
-    frontier,
-    remaining,
-    reviewDir,
-    excluded,
-    cEnd,
-    snapThreshold
-  );
-
-  return {
-    blocks: [...walked.blocks, ...walked2.blocks],
-    newCursor: walked2.newCursor,
-  };
+  return { blocks, newCursor };
 }
