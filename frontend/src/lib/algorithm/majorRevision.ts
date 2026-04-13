@@ -31,21 +31,6 @@ function cycleEnd(reviewDir: Direction): QuranPosition {
 }
 
 /**
- * Is `cursor` behind `startLine` in the review direction? (i.e. before or inside
- * the minor zone — needs to be pushed forward to startLine.)
- */
-function isBehindStartLine(
-  cursor: QuranPosition,
-  startLine: QuranPosition,
-  reviewDir: Direction
-): boolean {
-  if (reviewDir === "ascending") {
-    return comparePositions(cursor, startLine) < 0;
-  }
-  return comparePositions(cursor, startLine) > 0;
-}
-
-/**
  * The frontier is the newest memorized position as of this assignment —
  * the ayah closest to where today's new task is happening. The major
  * revision wraparound teleports here and walks in the review direction
@@ -84,72 +69,6 @@ function isExcluded(
   return excluded
     .filter((r): r is PositionRange => r !== null)
     .some((r) => isInRange(pos, r));
-}
-
-/**
- * Compute the start-line of the major revision cycle after a wraparound.
- *
- * Goal: find the earliest position in the review direction that is NOT inside
- * any excluded zone, such that the wraparound block starts from a clean surah
- * boundary when possible.
- *
- * Strategy:
- * 1. Find the oldest excluded boundary in the review direction (the "near" edge
- *    of the union of excluded zones). For ascending review this is the smallest
- *    position in the excluded zones.
- * 2. Try ayah 1 of that surah. If it is not excluded, use it — this covers the
- *    pre-minor-zone part of the surah (e.g. الجاثية ١-١٣ when minor starts at ١٤).
- * 3. If ayah 1 is excluded (the entire surah start is inside the exclusion),
- *    step one past the furthest excluded edge instead.
- */
-function computeStartLine(
-  minorZoneRange: PositionRange | null,
-  memRange: PositionRange | null,
-  reviewDir: Direction
-): QuranPosition {
-  const excluded = [minorZoneRange, memRange];
-  const excludedRanges = excluded.filter((r): r is PositionRange => r !== null);
-
-  if (excludedRanges.length === 0) {
-    return reviewDir === "ascending"
-      ? { surah: 1, ayah: 1 }
-      : cycleEnd("ascending");
-  }
-
-  // "Near" edge: the edge of the exclusion union that is earliest in the
-  // review direction (this is where the wraparound block should ideally start).
-  // For ascending review: the smallest (lowest) position among all excluded starts.
-  // For descending review: the largest (highest) position among all excluded ends.
-  const nearEdge = excludedRanges.reduce<QuranPosition>((best, r) => {
-    const edge = reviewDir === "ascending" ? r.start : r.end;
-    const cmp = comparePositions(edge, best);
-    return (reviewDir === "ascending" ? cmp < 0 : cmp > 0) ? edge : best;
-  }, reviewDir === "ascending" ? excludedRanges[0].start : excludedRanges[0].end);
-
-  // Try ayah 1 of the near-edge surah as the start line.
-  const surahStart: QuranPosition = { surah: nearEdge.surah, ayah: 1 };
-  if (!isExcluded(surahStart, excluded)) {
-    return surahStart;
-  }
-
-  // Ayah 1 is excluded — step one past the furthest excluded edge.
-  const furthest = excludedRanges.reduce<QuranPosition>((best, r) => {
-    const edge = reviewDir === "ascending" ? r.end : r.start;
-    const cmp = comparePositions(edge, best);
-    return (reviewDir === "ascending" ? cmp > 0 : cmp < 0) ? edge : best;
-  }, reviewDir === "ascending" ? excludedRanges[0].end : excludedRanges[0].start);
-
-  const next = getNextAyah(furthest, reviewDir);
-  if (!next) return furthest;
-
-  // If next is in a new surah and its surah-start is clean, snap to it.
-  if (next.surah !== furthest.surah) {
-    const nextSurahStart: QuranPosition = { surah: next.surah, ayah: 1 };
-    if (!isExcluded(nextSurahStart, excluded)) {
-      return nextSurahStart;
-    }
-  }
-  return next;
 }
 
 /**
@@ -286,19 +205,27 @@ function pageSpan(
 }
 
 /**
- * Major revision with a continuous, persistent cursor that cycles between the
- * dynamic start-line (just past the minor zone) and An-Nas 6 (or Al-Fatihah 1
- * for ascending memorization, which reviews downward).
+ * Major revision with a continuous, persistent cursor that walks the
+ * "free zone" — every memorized ayah minus the minor zone hole — in the
+ * review direction. On reaching the cycle terminus (An-Nas for ascending
+ * review, Al-Fatihah for descending review), the cursor teleports to the
+ * frontier (the newest memorized ayah) and resumes walking in the same
+ * review direction, treating the minor zone as a hole to skip over.
  *
- * The cursor persists across assignments. On reaching the cycle-end, it wraps
- * back to the current start-line. If the growing minor zone ever swallows the
- * cursor, the cursor is pushed forward to the start-line.
+ * The cursor persists across assignments. Block 1 always continues from
+ * where the previous assignment left off; on wraparound, block 2+ starts
+ * at the current frontier.
+ *
+ * Three cases:
+ *   A. Clean run     — cursor + budget fits before terminus, no hole crossed
+ *   B. Hole collision — budget would cross an excluded zone mid-walk
+ *   C. Wraparound    — budget overruns the terminus
  *
  * @param cursor          persistent cursor position (seeded from majRevStart on W1)
  * @param majRevPages     Y pages to cover this assignment
  * @param memDirection    student's memorization direction (review is opposite)
  * @param minorZoneRange  normalized Quran-order range of the minor zone (or null)
- * @param memRange        normalized Quran-order range of the current memorization (or null)
+ * @param memRange        normalized Quran-order range of today's new memorization (or null)
  */
 export function calculateMajorRevision(
   cursor: QuranPosition,
@@ -311,68 +238,70 @@ export function calculateMajorRevision(
 
   const reviewDir: Direction =
     memDirection === "descending" ? "ascending" : "descending";
-  const startLine = computeStartLine(minorZoneRange, memRange, reviewDir);
   const cEnd = cycleEnd(reviewDir);
-
-  // Boundary check: if the cursor is behind the start-line (inside/before the
-  // minor zone), push it forward to the start-line.
-  let current = cursor;
-  if (isBehindStartLine(current, startLine, reviewDir)) {
-    current = startLine;
-  }
-  // If the cursor has run off the end of the cycle (sentinel from a previous
-  // wrap), reset to the start-line.
-  if (reviewDir === "ascending" && comparePositions(current, cEnd) > 0) {
-    current = startLine;
-  } else if (reviewDir === "descending" && comparePositions(current, cEnd) < 0) {
-    current = startLine;
-  }
-
-  // Clean wrap: if the cursor is on the same page as the cycle end, any
-  // pre-wrap block would be a micro-block (a few stranded ayahs like
-  // "An-Nas 6 ← An-Nas 6"). Skip straight to the start-line so this
-  // assignment renders a single clean block.
-  const cursorPage = getAyahPage(current.surah, current.ayah);
-  const cEndPage = getAyahPage(cEnd.surah, cEnd.ayah);
-  if (cursorPage === cEndPage && comparePositions(current, cEnd) !== 0) {
-    current = startLine;
-  } else if (comparePositions(current, cEnd) === 0) {
-    current = startLine;
-  }
-
+  const excluded: Array<PositionRange | null> = [minorZoneRange, memRange];
   const snapThreshold = computeSnapThreshold(majRevPages * LINES_PER_PAGE);
-  const pagesAvailable = pageSpan(current, cEnd, reviewDir);
-  const blocks: MajorBlockRange[] = [];
-  let newCursor: QuranPosition;
 
-  if (pagesAvailable >= majRevPages) {
-    // Fits before the cycle end — single block.
-    const rawEnd = advanceByPages(current, majRevPages, reviewDir);
-    if (!rawEnd) return null;
-    const end = maybeSnapToSurahBoundary(rawEnd, reviewDir, snapThreshold);
-    blocks.push({ from: current, to: end });
-    newCursor = getNextAyah(end, reviewDir) ?? end;
-  } else {
-    // Wrap: block 1 goes to cycle end, then block 2+ starts at startLine,
-    // walking with gap-skips over any excluded zones.
-    blocks.push({ from: current, to: cEnd });
-    const remaining = majRevPages - pagesAvailable;
+  // If the cursor has run off the cycle terminus from a previous wrap,
+  // treat this as an immediate wraparound (block 1 is empty).
+  const cursorAtOrPastEnd =
+    reviewDir === "ascending"
+      ? comparePositions(cursor, cEnd) >= 0
+      : comparePositions(cursor, cEnd) <= 0;
 
-    if (remaining > 0) {
-      const walked = walkWithSkips(
-        startLine,
-        remaining,
-        reviewDir,
-        [minorZoneRange, memRange],
-        cEnd,
-        snapThreshold
-      );
-      blocks.push(...walked.blocks);
-      newCursor = walked.newCursor;
-    } else {
-      newCursor = startLine;
-    }
+  if (cursorAtOrPastEnd) {
+    const frontier = computeFrontier(memRange, memDirection);
+    const walked = walkWithSkips(
+      frontier,
+      majRevPages,
+      reviewDir,
+      excluded,
+      cEnd,
+      snapThreshold
+    );
+    return { blocks: walked.blocks, newCursor: walked.newCursor };
   }
 
-  return { blocks, newCursor };
+  // Walk from the current cursor with the full budget. walkWithSkips
+  // handles both Case A (clean run) and Case B (hole collision) — it emits
+  // one block and stops if nothing is in the way, or splits around any
+  // holes it encounters.
+  const walked = walkWithSkips(
+    cursor,
+    majRevPages,
+    reviewDir,
+    excluded,
+    cEnd,
+    snapThreshold
+  );
+
+  // Did the walk consume the full budget, or did it stop short because it
+  // hit the cycle terminus? If short, this is Case C (wraparound): keep
+  // block 1 (already in walked.blocks), then teleport to the frontier and
+  // walk the remaining budget.
+  const pagesEmitted = walked.blocks.reduce(
+    (sum, b) => sum + pageSpan(b.from, b.to, reviewDir),
+    0
+  );
+  const remaining = majRevPages - pagesEmitted;
+
+  if (remaining <= 0.001) {
+    return { blocks: walked.blocks, newCursor: walked.newCursor };
+  }
+
+  // Case C — wraparound. Teleport to frontier and walk the remaining budget.
+  const frontier = computeFrontier(memRange, memDirection);
+  const walked2 = walkWithSkips(
+    frontier,
+    remaining,
+    reviewDir,
+    excluded,
+    cEnd,
+    snapThreshold
+  );
+
+  return {
+    blocks: [...walked.blocks, ...walked2.blocks],
+    newCursor: walked2.newCursor,
+  };
 }
