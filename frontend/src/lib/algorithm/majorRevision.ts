@@ -45,6 +45,31 @@ function isBehindStartLine(
   return comparePositions(cursor, startLine) > 0;
 }
 
+/**
+ * The frontier is the newest memorized position as of this assignment —
+ * the ayah closest to where today's new task is happening. The major
+ * revision wraparound teleports here and walks in the review direction
+ * back through the older memorized material.
+ *
+ * For descending memDir, today's new task moves toward lower surah indices,
+ * so the newest ayah has the LOWEST index = memRange.start (after normalize).
+ * For ascending memDir, the newest ayah has the HIGHEST index = memRange.end.
+ *
+ * If memRange is null (defensive — should not happen in practice since
+ * major revision is only called after new memorization runs), fall back to
+ * the cycle start in the review direction.
+ */
+function computeFrontier(
+  memRange: PositionRange | null,
+  memDir: Direction
+): QuranPosition {
+  if (!memRange) {
+    return memDir === "descending"
+      ? { surah: TOTAL_SURAHS, ayah: getSurahByNumber(TOTAL_SURAHS).ayahCount }
+      : { surah: 1, ayah: 1 };
+  }
+  return memDir === "descending" ? memRange.start : memRange.end;
+}
 
 /** Returns true if `pos` is inside `range` (inclusive, Quran order). */
 function isInRange(pos: QuranPosition, range: PositionRange): boolean {
