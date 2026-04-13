@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la *.py)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(npm run:*)",
+      "Bash(npx next:*)",
+      "Bash(node -e ':*)",
+      "Bash(node fetch-ayah-pages.mjs)",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(npx vitest:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx tsx -e ':*)",
+      "Bash(git add .)",
+      "Bash(git commit -m ':*)",
+      "Bash(git log)",
+      "Bash(git show)",
+      "Bash(git push)"
+    ]
+  }
+}

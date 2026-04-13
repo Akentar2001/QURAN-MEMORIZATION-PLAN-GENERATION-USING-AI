@@ -86,11 +86,19 @@ export const usePlanStore = create<PlanStore>()(
     }),
     {
       name: "quran-plan-generator",
+      version: 2,
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
         students: state.students,
         plans: state.plans,
       }),
+      migrate: (persisted, version) => {
+        const state = persisted as { students?: StudentConfig[]; plans?: StudentPlan[] };
+        if (version < 2) {
+          return { students: state.students ?? [], plans: [] };
+        }
+        return state;
+      },
     }
   )
 );

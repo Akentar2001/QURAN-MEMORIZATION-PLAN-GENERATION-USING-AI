@@ -7,19 +7,17 @@ interface Props {
 export default function PlanHeader({ studentName, halaqah, settingsSummary }: Props) {
   return (
     <div
-      className="rounded-t-lg p-4 text-white text-center plan-header-print"
-      style={{ backgroundColor: "var(--color-navy)" }}
+      className="px-3 py-4 text-white text-center plan-header-print"
+      style={{ backgroundColor: "var(--color-header-bg)" }}
+      dir="rtl"
     >
-      <h2 className="text-xl font-bold mb-1">الخطة القرآنية</h2>
-      <div className="flex justify-center gap-8 text-lg header-info">
-        <span>
-          الطالب: <strong style={{ color: "var(--color-gold)" }}>{studentName}</strong>
-        </span>
-        <span>
-          الحلقة: <strong style={{ color: "var(--color-gold)" }}>{halaqah}</strong>
-        </span>
+      <div className="font-bold text-lg leading-tight tracking-wide">
+        <span style={{ color: "var(--color-gold)" }}>{studentName}</span>
+        {halaqah && (
+          <span className="font-normal text-white"> &nbsp;|&nbsp; {halaqah}</span>
+        )}
       </div>
-      <p className="text-sm mt-1 opacity-80 header-settings">{settingsSummary}</p>
+      <div className="text-sm text-white opacity-90 mt-1 leading-tight">{settingsSummary}</div>
     </div>
   );
 }

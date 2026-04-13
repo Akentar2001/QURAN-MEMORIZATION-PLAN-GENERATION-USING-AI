@@ -1,4 +1,5 @@
 import type { QuranPosition, PositionRange, Direction } from "@/lib/quran/types";
+import { TOTAL_SURAHS } from "@/lib/quran/constants";
 import { getSurahByNumber } from "@/lib/quran/surahs";
 import { getAyahPage } from "@/lib/quran/ayahPages";
 import {
@@ -21,40 +22,40 @@ export interface MajorRevisionResult {
 }
 
 /**
- * The cycle terminus = the oldest edge of the Known Universe in the review
- * direction. For descending mem (ascending review) this is the last ayah of
- * the oldest historical surah (majRevStart). For ascending mem (descending
- * review) this is ayah 1 of the oldest historical surah (still majRevStart,
- * since ascending mem starts at low index and goes up).
+ * The cycle terminus = the natural end of the Quran in the review direction.
+ * For descending mem (ascending review) this is An-Nas 6 — all surahs between
+ * memStart+1 and 114 are historically memorized, so the walker may freely
+ * patrol the entire range. For ascending mem (descending review) this is
+ * Al-Fatihah 1.
  *
- * majRevStart is the student's oldest historical memorization boundary
- * (e.g., "Juz Amma starting at An-Nas" → majRevStart = {114, 1}).
+ * The teacher's `majRevStart` is a CURSOR SEED, not a boundary — it only
+ * controls where the walker starts on W1. The review range is bounded by
+ * the natural Quran end on one side and by the frontier (today's task) plus
+ * excluded zones (minor + unmemorized hole) on the other.
  */
-function cycleTerminus(
-  majRevStart: QuranPosition,
-  reviewDir: Direction
-): QuranPosition {
+function cycleTerminus(reviewDir: Direction): QuranPosition {
   if (reviewDir === "ascending") {
-    // Walk ends at the LAST ayah of the oldest surah (entire surah is in scope).
-    const surahInfo = getSurahByNumber(majRevStart.surah);
-    return { surah: majRevStart.surah, ayah: surahInfo.ayahCount };
+    const last = getSurahByNumber(TOTAL_SURAHS);
+    return { surah: TOTAL_SURAHS, ayah: last.ayahCount };
   }
-  // Ascending mem / descending review: walk ends at ayah 1 of the oldest surah.
-  return { surah: majRevStart.surah, ayah: 1 };
+  return { surah: 1, ayah: 1 };
 }
 
 /**
- * The frontier is the first memorized ayah past today's new task in the
- * review direction. It is the entry point into the "older memorized" material
- * that the walker will patrol.
+ * The frontier is the walker's entry point into the Known Universe on
+ * wraparound. It is always ayah 1 of the currently-active surah (the surah
+ * the student is memorizing today).
  *
- * For descending memDir (review = ascending): frontier = next ayah after
- * memRange.start in ascending order. This lands inside the unmemorized tail
- * of today's active surah, but that tail is marked as an excluded hole so
- * walkWithSkips will teleport past it to the next fully-memorized surah.
+ * For descending mem (ascending review): walking ascending from ayah 1 of
+ * the active surah picks up the earlier-memorized portion of the surah
+ * (e.g., Al-Jathiyah 1-12 when today's task is Al-Jathiyah 13-18), then
+ * teleports past today's task and the unmemorized tail into the next
+ * surah — matching the Python backend's "loop back to oldest material"
+ * behavior on reaching An-Nas.
  *
- * For ascending memDir (review = descending): frontier = next ayah before
- * memRange.end in descending order.
+ * For ascending mem (descending review): walking descending from ayah 1
+ * of the active surah exits the surah immediately into the previous surah,
+ * covering the older historical material all the way back to Al-Fatihah.
  */
 function computeFrontier(
   memRange: PositionRange | null,
@@ -64,10 +65,8 @@ function computeFrontier(
   if (!memRange) {
     return majRevStart;
   }
-  const todayBoundary = memDir === "descending" ? memRange.start : memRange.end;
-  const reviewDir: Direction = memDir === "descending" ? "ascending" : "descending";
-  const next = getNextAyah(todayBoundary, reviewDir);
-  return next ?? todayBoundary;
+  const activeSurah = memDir === "descending" ? memRange.start.surah : memRange.end.surah;
+  return { surah: activeSurah, ayah: 1 };
 }
 
 /**
@@ -79,15 +78,20 @@ function computeFrontier(
  */
 function computeUnmemorizedHole(
   memRange: PositionRange | null,
-  memDir: Direction
+  _memDir: Direction
 ): PositionRange | null {
   if (!memRange) return null;
-  const activeSurahPos = memDir === "descending" ? memRange.start : memRange.end;
-  const surahInfo = getSurahByNumber(activeSurahPos.surah);
-  if (activeSurahPos.ayah >= surahInfo.ayahCount) return null;
+  // Within a surah, memorization always proceeds ayah 1 → last. Today's task
+  // ends at the highest ayah number memorized so far in the active surah
+  // (= memRange.end after normalization, which is always the higher-index end).
+  // The unmemorized hole is everything strictly after that up to the surah's
+  // last ayah. If today's task ended at the last ayah, there's no hole.
+  const lastMemorized = memRange.end;
+  const surahInfo = getSurahByNumber(lastMemorized.surah);
+  if (lastMemorized.ayah >= surahInfo.ayahCount) return null;
   return {
-    start: { surah: activeSurahPos.surah, ayah: activeSurahPos.ayah + 1 },
-    end: { surah: activeSurahPos.surah, ayah: surahInfo.ayahCount },
+    start: { surah: lastMemorized.surah, ayah: lastMemorized.ayah + 1 },
+    end: { surah: lastMemorized.surah, ayah: surahInfo.ayahCount },
   };
 }
 
@@ -283,7 +287,7 @@ export function calculateMajorRevision(
 
   const reviewDir: Direction =
     memDirection === "descending" ? "ascending" : "descending";
-  const terminus = cycleTerminus(majRevStart, reviewDir);
+  const terminus = cycleTerminus(reviewDir);
   const unmemorizedHole = computeUnmemorizedHole(memRange, memDirection);
   const excluded: Array<PositionRange | null> = [
     minorZoneRange,
