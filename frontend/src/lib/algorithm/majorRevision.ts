@@ -242,8 +242,10 @@ export function calculateMajorRevision(
   const excluded: Array<PositionRange | null> = [minorZoneRange, memRange];
   const snapThreshold = computeSnapThreshold(majRevPages * LINES_PER_PAGE);
 
-  // If the cursor has run off the cycle terminus from a previous wrap,
-  // treat this as an immediate wraparound (block 1 is empty).
+  // Cursor is at or past the cycle terminus — either from a previous
+  // wraparound (the prior assignment stored `start` as a sentinel in
+  // walkWithSkips) or because the last assignment ended exactly on the
+  // terminus. Either way, start fresh from the frontier (block 1 is empty).
   const cursorAtOrPastEnd =
     reviewDir === "ascending"
       ? comparePositions(cursor, cEnd) >= 0
