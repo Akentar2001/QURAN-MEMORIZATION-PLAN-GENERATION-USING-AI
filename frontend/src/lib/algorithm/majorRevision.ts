@@ -98,8 +98,11 @@ function walkWithSkips(
     if (reviewDir === "ascending" && comparePositions(pos, cEnd) > 0) break;
     if (reviewDir === "descending" && comparePositions(pos, cEnd) < 0) break;
 
-    // Find the next excluded zone boundary ahead of pos in the review direction
+    // Find the next excluded zone boundary ahead of pos in the review direction.
+    // If `pos` is inside an excluded range, teleport past it and restart the
+    // while loop so obstacles are re-detected at the new position.
     let nextExcludedStart: QuranPosition | null = null;
+    let teleported = false;
     for (const r of excluded) {
       if (!r) continue;
       // The "near" edge of this range in the review direction
@@ -115,7 +118,7 @@ function walkWithSkips(
             ? afterSurahStart
             : after;
         }
-        nextExcludedStart = null; // re-evaluate after skip
+        teleported = true;
         break;
       }
       // Is this range ahead of pos in the review direction?
@@ -134,6 +137,10 @@ function walkWithSkips(
       }
     }
 
+    // After teleporting past an excluded zone, restart the while loop so the
+    // next obstacle is detected from the new position.
+    if (teleported) continue;
+
     // How many pages until the next obstacle (excluded zone or cycle end)?
     const obstacle = (() => {
       if (!nextExcludedStart) return cEnd;
@@ -149,10 +156,14 @@ function walkWithSkips(
       // Budget fits before the obstacle — emit one block and done.
       const rawEnd = advanceByPages(pos, remaining, reviewDir);
       if (!rawEnd) break;
-      const end = maybeSnapToSurahBoundary(rawEnd, reviewDir, snapThreshold);
+      const snapped = maybeSnapToSurahBoundary(rawEnd, reviewDir, snapThreshold);
+      // Clamp to the obstacle so the snap can't push us into an excluded zone.
+      const clampedToObstacle = reviewDir === "ascending"
+        ? (comparePositions(snapped, obstacle) > 0 ? obstacle : snapped)
+        : (comparePositions(snapped, obstacle) < 0 ? obstacle : snapped);
       const blockEnd = reviewDir === "ascending"
-        ? (comparePositions(end, cEnd) > 0 ? cEnd : end)
-        : (comparePositions(end, cEnd) < 0 ? cEnd : end);
+        ? (comparePositions(clampedToObstacle, cEnd) > 0 ? cEnd : clampedToObstacle)
+        : (comparePositions(clampedToObstacle, cEnd) < 0 ? cEnd : clampedToObstacle);
       blocks.push({ from: pos, to: blockEnd });
       const nc = getNextAyah(blockEnd, reviewDir);
       return { blocks, newCursor: nc ?? blockEnd };
