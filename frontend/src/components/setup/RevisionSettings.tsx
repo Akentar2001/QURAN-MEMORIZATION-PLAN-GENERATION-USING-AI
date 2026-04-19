@@ -1,6 +1,6 @@
 "use client";
 
-import Input from "@/components/ui/Input";
+import Select from "@/components/ui/Select";
 import SurahSelect from "./SurahSelect";
 import type { StudentConfig } from "@/lib/quran/types";
 
@@ -9,39 +9,57 @@ interface Props {
   onUpdate: (updates: Partial<StudentConfig>) => void;
 }
 
+const MINOR_PRESETS: { label: string; value: number }[] = Array.from(
+  { length: 39 },
+  (_, i) => {
+    const val = (i + 2) / 2;
+    return { label: `${val} صفحة`, value: val };
+  }
+);
+
+const MAJOR_PRESETS: { label: string; value: number }[] = [
+  { label: "١ صفحة", value: 1 },
+  { label: "٢ صفحات", value: 2 },
+  { label: "٣ صفحات", value: 3 },
+  { label: "٤ صفحات", value: 4 },
+  { label: "٥ صفحات", value: 5 },
+  { label: "٦ صفحات", value: 6 },
+  { label: "٧ صفحات", value: 7 },
+  { label: "٨ صفحات", value: 8 },
+  { label: "٩ صفحات", value: 9 },
+  { label: "١٠ صفحات", value: 10 },
+  { label: "١٥ صفحة", value: 15 },
+  { label: "٢٠ صفحة (جزء)", value: 20 },
+  { label: "٤٠ صفحة (جزءان)", value: 40 },
+  { label: "٦٠ صفحة (٣ أجزاء)", value: 60 },
+];
+
 export default function RevisionSettings({ config, onUpdate }: Props) {
   return (
     <div className="space-y-3">
       <h4 className="font-bold text-[var(--color-navy)] border-b pb-1">إعدادات المراجعة</h4>
-      <Input
-        label="مقدار المراجعة الصغيرة (صفحات)"
-        type="number"
-        min={0.5}
-        max={5}
-        step={0.5}
-        value={config.minorRevPages}
-        onChange={(e) => onUpdate({ minorRevPages: Number(e.target.value) })}
+      <Select
+        label="مقدار المراجعة الصغرى"
+        value={String(config.minorRevPages)}
+        onChange={(v) => onUpdate({ minorRevPages: Number(v) })}
+        options={MINOR_PRESETS.map((p) => ({
+          value: String(p.value),
+          label: p.label,
+        }))}
       />
       <SurahSelect
-        label="بداية المراجعة الكبيرة"
+        label="بداية المراجعة الكبرى (السورة)"
         value={config.majRevStartSurah}
         onChange={(n) => onUpdate({ majRevStartSurah: n, majRevStartAyah: 1 })}
       />
-      <Input
-        label="بداية المراجعة الكبيرة من آية"
-        type="number"
-        min={1}
-        value={config.majRevStartAyah}
-        onChange={(e) => onUpdate({ majRevStartAyah: Number(e.target.value) })}
-      />
-      <Input
-        label="مقدار المراجعة الكبيرة (صفحات)"
-        type="number"
-        min={0.5}
-        max={10}
-        step={0.5}
-        value={config.majRevPages}
-        onChange={(e) => onUpdate({ majRevPages: Number(e.target.value) })}
+      <Select
+        label="مقدار المراجعة الكبرى"
+        value={String(config.majRevPages)}
+        onChange={(v) => onUpdate({ majRevPages: Number(v) })}
+        options={MAJOR_PRESETS.map((p) => ({
+          value: String(p.value),
+          label: p.label,
+        }))}
       />
     </div>
   );

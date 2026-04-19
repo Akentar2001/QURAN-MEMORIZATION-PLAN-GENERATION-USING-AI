@@ -1,6 +1,5 @@
 "use client";
 
-import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import SurahSelect from "./SurahSelect";
 import type { StudentConfig } from "@/lib/quran/types";
@@ -9,6 +8,19 @@ interface Props {
   config: StudentConfig;
   onUpdate: (updates: Partial<StudentConfig>) => void;
 }
+
+const MEM_PRESETS: { label: string; value: number }[] = [
+  { label: "٢ سطر", value: 2 },
+  { label: "٣ سطر", value: 3 },
+  { label: "٤ سطر", value: 4 },
+  { label: "٥ سطر", value: 5 },
+  { label: "٦ سطر", value: 6 },
+  { label: "٧ سطر (نصف صفحة)", value: 7 },
+  { label: "صفحة كاملة (١٥ سطر)", value: 15 },
+  { label: "صفحة ونصف", value: 22 },
+  { label: "صفحتان", value: 30 },
+  { label: "٣ صفحات", value: 45 },
+];
 
 export default function MemorizationSettings({ config, onUpdate }: Props) {
   return (
@@ -19,20 +31,23 @@ export default function MemorizationSettings({ config, onUpdate }: Props) {
         value={config.memStartSurah}
         onChange={(n) => onUpdate({ memStartSurah: n, memStartAyah: 1 })}
       />
-      <Input
+      <Select
         label="بداية الحفظ من آية"
-        type="number"
-        min={1}
-        value={config.memStartAyah}
-        onChange={(e) => onUpdate({ memStartAyah: Number(e.target.value) })}
+        value={String(config.memStartAyah)}
+        onChange={(v) => onUpdate({ memStartAyah: Number(v) })}
+        options={Array.from({ length: 30 }, (_, i) => ({
+          value: String(i + 1),
+          label: String(i + 1),
+        }))}
       />
-      <Input
-        label="عدد الأسطر لكل واجب"
-        type="number"
-        min={5}
-        max={60}
-        value={config.linesPerSession}
-        onChange={(e) => onUpdate({ linesPerSession: Number(e.target.value) })}
+      <Select
+        label="المقدار اليومي للحفظ"
+        value={String(config.linesPerSession)}
+        onChange={(v) => onUpdate({ linesPerSession: Number(v) })}
+        options={MEM_PRESETS.map((p) => ({
+          value: String(p.value),
+          label: p.label,
+        }))}
       />
       <Select
         label="اتجاه الحفظ"
