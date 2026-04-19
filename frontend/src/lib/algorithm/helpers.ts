@@ -1,7 +1,6 @@
 import type { QuranPosition, PositionRange, Direction } from "@/lib/quran/types";
 import { TOTAL_SURAHS } from "@/lib/quran/constants";
-import { getSurahByNumber, SURAHS } from "@/lib/quran/surahs";
-import { getAyahPage, getPageStartAyah, getAyahsOnPage, getPageEndAyah } from "@/lib/quran/ayahPages";
+import { getSurahByNumber } from "@/lib/quran/surahs";
 import { VERSES, BY_POSITION, BY_REVERSE, REVERSE_IDX_TO_ARRAY_IDX, SURAHS_DATA } from "@/lib/quran/verseData";
 
 /**
@@ -75,115 +74,6 @@ export function formatPosition(pos: QuranPosition): string {
 }
 
 /**
- * Advance from a start position by a given number of pages in the specified direction.
- * Returns the ending position (the last ayah covered).
- *
- * For ascending: returns a position HIGHER in Quran order (last ayah on the end page).
- * For descending: returns a position LOWER in Quran order (first ayah on the end page).
- *
- * N pages means covering N pages of content, NOT advancing N page numbers.
- * Starting on page X, covering 1 page means content on page X only.
- * Covering 2 pages means pages X and X+1 (ascending) or X and X-1 (descending).
- */
-export function advanceByPages(
-  start: QuranPosition,
-  pages: number,
-  direction: Direction
-): QuranPosition | null {
-  if (pages <= 0) return start;
-
-  const startPage = getAyahPage(start.surah, start.ayah);
-  const wholePages = Math.floor(pages);
-  const fraction = pages - wholePages;
-
-  if (direction === "ascending") {
-    // Cover pages: startPage, startPage+1, ..., startPage+wholePages-1
-    // Plus fractional part on the next page if any
-    const lastFullPage = Math.min(604, startPage + wholePages - 1);
-
-    if (fraction < 0.001) {
-      // Exact whole pages
-      return getPageEndAyah(lastFullPage);
-    }
-
-    // Fractional: cover full pages + fraction of the next page
-    const partialPage = lastFullPage + 1;
-    if (partialPage > 604) {
-      return { surah: 114, ayah: SURAHS[113].ayahCount };
-    }
-    const ayahsOnPartialPage = getAyahsOnPage(partialPage);
-    if (ayahsOnPartialPage.length === 0) {
-      return getPageEndAyah(lastFullPage);
-    }
-
-    // When wholePages === 0 the partial page IS the start page.
-    // We must advance relative to the start ayah's offset within the page,
-    // not from the page's beginning — otherwise we can land before the cursor.
-    // If advancing overflows the start page, spill onto the next page.
-    if (wholePages === 0) {
-      const startIdxOnPage = ayahsOnPartialPage.findIndex(
-        (p) => p.surah === start.surah && p.ayah === start.ayah
-      );
-      const offsetFromStart = startIdxOnPage >= 0 ? startIdxOnPage : 0;
-      const advance = Math.max(1, Math.round(fraction * ayahsOnPartialPage.length));
-      const targetIdx = offsetFromStart + advance - 1;
-      if (targetIdx < ayahsOnPartialPage.length) {
-        return ayahsOnPartialPage[targetIdx];
-      }
-      // Overflow: we used up the rest of the start page — spill into the next page.
-      const overflow = targetIdx - (ayahsOnPartialPage.length - 1);
-      const nextPage = partialPage + 1;
-      if (nextPage > 604) return { surah: 114, ayah: SURAHS[113].ayahCount };
-      const ayahsOnNextPage = getAyahsOnPage(nextPage);
-      if (ayahsOnNextPage.length === 0) return getPageEndAyah(partialPage);
-      const nextIdx = Math.min(ayahsOnNextPage.length - 1, overflow - 1);
-      return ayahsOnNextPage[nextIdx];
-    }
-
-    const idx = Math.max(0, Math.round(fraction * ayahsOnPartialPage.length) - 1);
-    return ayahsOnPartialPage[idx];
-  } else {
-    // Descending: cover pages startPage, startPage-1, ..., startPage-wholePages+1
-    const lastFullPage = Math.max(1, startPage - wholePages + 1);
-
-    if (fraction < 0.001) {
-      // Exact whole pages — return first ayah on the lowest page covered
-      return getPageStartAyah(lastFullPage);
-    }
-
-    // Fractional: cover full pages + fraction of the page below
-    const partialPage = lastFullPage - 1;
-    if (partialPage < 1) {
-      return { surah: 1, ayah: 1 };
-    }
-    const ayahsOnPartialPage = getAyahsOnPage(partialPage);
-    if (ayahsOnPartialPage.length === 0) {
-      return getPageStartAyah(lastFullPage);
-    }
-
-    // When wholePages === 0 the partial page IS the start page.
-    // We must advance relative to the start ayah's offset, going backward.
-    if (wholePages === 0) {
-      const startIdxOnPage = ayahsOnPartialPage.findIndex(
-        (p) => p.surah === start.surah && p.ayah === start.ayah
-      );
-      const offsetFromEnd = startIdxOnPage >= 0
-        ? ayahsOnPartialPage.length - 1 - startIdxOnPage
-        : 0;
-      const advance = Math.max(1, Math.round(fraction * ayahsOnPartialPage.length));
-      const fromEnd = offsetFromEnd + advance;
-      const targetIdx = Math.max(0, ayahsOnPartialPage.length - fromEnd - 1);
-      return ayahsOnPartialPage[targetIdx];
-    }
-
-    // From the end of the page, pick the fraction point
-    const fromEnd = Math.round(fraction * ayahsOnPartialPage.length);
-    const idx = Math.max(0, ayahsOnPartialPage.length - fromEnd);
-    return ayahsOnPartialPage[idx];
-  }
-}
-
-/**
  * Create a normalized PositionRange where start <= end in Quran order,
  * regardless of the direction of memorization.
  */
@@ -192,49 +82,6 @@ export function normalizeRange(a: QuranPosition, b: QuranPosition): PositionRang
     return { start: a, end: b };
   }
   return { start: b, end: a };
-}
-
-/**
- * Compute the snap threshold in lines for a session budget, capped to [6, 10]
- * or 15% of the budget — whichever the user would reasonably tolerate as "a
- * few extra ayahs to finish the surah".
- */
-export function computeSnapThreshold(budgetLines: number): number {
-  return Math.min(10, Math.max(6, Math.floor(budgetLines * 0.15)));
-}
-
-/**
- * If a stop position is within `thresholdAyahs` of a surah boundary in the
- * reading direction and the boundary is on the same or next page, extend the
- * stop to the surah boundary. Returns the possibly-extended position.
- *
- * - ascending: snaps forward to the last ayah of the surah
- * - descending: snaps backward to ayah 1 of the surah
- */
-export function maybeSnapToSurahBoundary(
-  stopPos: QuranPosition,
-  readDir: Direction,
-  thresholdAyahs: number
-): QuranPosition {
-  const surah = getSurahByNumber(stopPos.surah);
-
-  if (readDir === "ascending") {
-    if (stopPos.ayah >= surah.ayahCount) return stopPos;
-    const remaining = surah.ayahCount - stopPos.ayah;
-    if (remaining > thresholdAyahs) return stopPos;
-    const stopPage = getAyahPage(stopPos.surah, stopPos.ayah);
-    const endPage = getAyahPage(stopPos.surah, surah.ayahCount);
-    if (endPage - stopPage > 1) return stopPos;
-    return { surah: stopPos.surah, ayah: surah.ayahCount };
-  }
-
-  if (stopPos.ayah <= 1) return stopPos;
-  const before = stopPos.ayah - 1;
-  if (before > thresholdAyahs) return stopPos;
-  const stopPage = getAyahPage(stopPos.surah, stopPos.ayah);
-  const startPage = getAyahPage(stopPos.surah, 1);
-  if (stopPage - startPage > 1) return stopPos;
-  return { surah: stopPos.surah, ayah: 1 };
 }
 
 /**

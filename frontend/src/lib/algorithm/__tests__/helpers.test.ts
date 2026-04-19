@@ -5,11 +5,9 @@ import {
   isPositionInRange,
   toArabicNumerals,
   formatPosition,
-  advanceByPages,
   normalizeRange,
   walkByWeight,
 } from "@/lib/algorithm/helpers";
-import { getAyahPage } from "@/lib/quran/ayahPages";
 import { BY_POSITION } from "@/lib/quran/verseData";
 
 describe("comparePositions", () => {
@@ -95,35 +93,6 @@ describe("formatPosition", () => {
   });
 });
 
-describe("advanceByPages", () => {
-  it("ascending 1 page covers exactly 1 page", () => {
-    const result = advanceByPages({ surah: 2, ayah: 1 }, 1, "ascending");
-    expect(result).not.toBeNull();
-    const resultPage = getAyahPage(result!.surah, result!.ayah);
-    expect(resultPage).toBe(2);
-  });
-
-  it("ascending 2 pages covers 2 pages", () => {
-    const result = advanceByPages({ surah: 2, ayah: 1 }, 2, "ascending");
-    expect(result).not.toBeNull();
-    const resultPage = getAyahPage(result!.surah, result!.ayah);
-    expect(resultPage).toBe(3);
-  });
-
-  it("descending 1 page from Al-Ghashiyah stays on same page", () => {
-    const result = advanceByPages({ surah: 88, ayah: 1 }, 1, "descending");
-    expect(result).not.toBeNull();
-    const resultPage = getAyahPage(result!.surah, result!.ayah);
-    expect(resultPage).toBe(592);
-  });
-
-  it("descending 2 pages from Al-Ghashiyah covers pages 592 and 591", () => {
-    const result = advanceByPages({ surah: 88, ayah: 1 }, 2, "descending");
-    expect(result).not.toBeNull();
-    const resultPage = getAyahPage(result!.surah, result!.ayah);
-    expect(resultPage).toBe(591);
-  });
-});
 
 describe("normalizeRange", () => {
   it("keeps already-sorted range", () => {
