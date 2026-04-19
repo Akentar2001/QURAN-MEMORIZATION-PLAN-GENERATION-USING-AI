@@ -1,15 +1,12 @@
 import type { QuranPosition, PositionRange, Direction } from "@/lib/quran/types";
 import { TOTAL_SURAHS } from "@/lib/quran/constants";
 import { getSurahByNumber } from "@/lib/quran/surahs";
-import { getAyahPage } from "@/lib/quran/ayahPages";
 import {
-  advanceByPages,
   comparePositions,
-  computeSnapThreshold,
   getNextAyah,
-  maybeSnapToSurahBoundary,
+  walkByWeight,
+  weightBetween,
 } from "./helpers";
-import { LINES_PER_PAGE } from "@/lib/quran/constants";
 
 export interface MajorBlockRange {
   from: QuranPosition;
@@ -123,8 +120,7 @@ function walkWithSkips(
   budgetPages: number,
   reviewDir: Direction,
   excluded: Array<PositionRange | null>,
-  cEnd: QuranPosition,
-  snapThreshold: number
+  cEnd: QuranPosition
 ): { blocks: MajorBlockRange[]; newCursor: QuranPosition } {
   const blocks: MajorBlockRange[] = [];
   let remaining = budgetPages;
@@ -189,17 +185,16 @@ function walkWithSkips(
       return beforeExcluded ?? nextExcludedStart;
     })();
 
-    const pagesTo = pageSpan(pos, obstacle, reviewDir);
+    const stopPlace = nextExcludedStart?.surah;
+    const pagesTo = weightBetween(pos, obstacle, reviewDir);
 
     if (remaining <= pagesTo) {
       // Budget fits before the obstacle — emit one block and done.
-      const rawEnd = advanceByPages(pos, remaining, reviewDir);
-      if (!rawEnd) break;
-      const snapped = maybeSnapToSurahBoundary(rawEnd, reviewDir, snapThreshold);
-      // Clamp to the obstacle so the snap can't push us into an excluded zone.
+      const walked = walkByWeight(pos, remaining, reviewDir, stopPlace);
+      const rawEnd = walked.to;
       const clampedToObstacle = reviewDir === "ascending"
-        ? (comparePositions(snapped, obstacle) > 0 ? obstacle : snapped)
-        : (comparePositions(snapped, obstacle) < 0 ? obstacle : snapped);
+        ? (comparePositions(rawEnd, obstacle) > 0 ? obstacle : rawEnd)
+        : (comparePositions(rawEnd, obstacle) < 0 ? obstacle : rawEnd);
       const blockEnd = reviewDir === "ascending"
         ? (comparePositions(clampedToObstacle, cEnd) > 0 ? cEnd : clampedToObstacle)
         : (comparePositions(clampedToObstacle, cEnd) < 0 ? cEnd : clampedToObstacle);
@@ -237,21 +232,6 @@ function walkWithSkips(
     ? (getNextAyah(blocks[blocks.length - 1].to, reviewDir) ?? blocks[blocks.length - 1].to)
     : start;
   return { blocks, newCursor: nc };
-}
-
-/**
- * Page-distance from `from` to `to` in the given direction (inclusive).
- * Returns how many pages are covered walking from `from` to `to`.
- */
-function pageSpan(
-  from: QuranPosition,
-  to: QuranPosition,
-  reviewDir: Direction
-): number {
-  const fromPage = getAyahPage(from.surah, from.ayah);
-  const toPage = getAyahPage(to.surah, to.ayah);
-  if (reviewDir === "ascending") return toPage - fromPage + 1;
-  return fromPage - toPage + 1;
 }
 
 /**
@@ -294,7 +274,6 @@ export function calculateMajorRevision(
     memRange,
     unmemorizedHole,
   ];
-  const snapThreshold = computeSnapThreshold(majRevPages * LINES_PER_PAGE);
   const frontier = computeFrontier(memRange, memDirection, majRevStart);
 
   // If the cursor is outside the Known Universe or at/past the terminus,
@@ -321,13 +300,12 @@ export function calculateMajorRevision(
       remaining,
       reviewDir,
       excluded,
-      terminus,
-      snapThreshold
+      terminus
     );
     blocks.push(...walked.blocks);
 
     const pagesEmitted = walked.blocks.reduce(
-      (sum, b) => sum + pageSpan(b.from, b.to, reviewDir),
+      (sum, b) => sum + weightBetween(b.from, b.to, reviewDir),
       0
     );
     remaining -= pagesEmitted;
