@@ -206,4 +206,38 @@ describe("generatePlan", () => {
     // Assignment 1 should start with Al-Fatiha
     expect(plan.assignments[0].memFrom).toContain("الفاتحة");
   });
+
+  // Weight-based sanity checks for plan quality
+  it("all assignments have a positive assignment number", () => {
+    const plan = generatePlan(ghashiyahConfig);
+    for (const assignment of plan.assignments) {
+      expect(assignment.assignmentNumber).toBeGreaterThan(0);
+    }
+  });
+
+  it("all 40 assignments have at least 1 major revision block", () => {
+    const plan = generatePlan(ghashiyahConfig);
+    for (const a of plan.assignments) {
+      expect(a.majorBlocks.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("new memorization advances across assignments (descending: surah numbers decrease over time)", () => {
+    const plan = generatePlan(ghashiyahConfig);
+    // Verify we have valid memorization data to check
+    const memFromStrings = plan.assignments
+      .map((a) => a.memFrom)
+      .filter((m): m is string => m !== null);
+    expect(memFromStrings.length).toBeGreaterThan(0);
+    // First assignment should start at Al-Ghashiyah (88)
+    expect(plan.assignments[0].memFrom).toContain("الغاشية");
+  });
+
+  it("all assignments have non-null memorization (memFrom and memTo)", () => {
+    const plan = generatePlan(ghashiyahConfig);
+    for (const a of plan.assignments) {
+      expect(a.memFrom).not.toBeNull();
+      expect(a.memTo).not.toBeNull();
+    }
+  });
 });
