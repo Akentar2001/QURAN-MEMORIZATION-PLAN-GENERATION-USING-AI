@@ -84,14 +84,12 @@ export function generatePlan(config: StudentConfig): StudentPlan {
     // 2. Minor revision: X-page rolling window "immediately preceding" today's
     // new task. Walks back from the previous assignment's frontier so today's
     // memorization is NOT included in the minor zone.
-    const minorResult = previousFrontier
-      ? calculateMinorRevision(
-          previousFrontier,
-          config.minorRevPages,
-          memStart,
-          config.direction
-        )
-      : null;
+    const minorResult = calculateMinorRevision(
+      previousFrontier,
+      config.minorRevPages,
+      memStart,
+      config.direction
+    );
 
     if (minorResult) {
       row.minorFrom = formatPosition(minorResult.from);
