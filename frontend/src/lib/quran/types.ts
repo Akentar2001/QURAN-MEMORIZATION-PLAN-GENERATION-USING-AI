@@ -58,4 +58,3 @@ export interface StudentPlan {
   assignments: AssignmentRow[];
 }
 
-export type AyahPageMap = number[][];
