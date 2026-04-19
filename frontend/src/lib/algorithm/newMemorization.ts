@@ -1,7 +1,6 @@
 import type { QuranPosition, Direction, PositionRange } from "@/lib/quran/types";
 import { LINES_PER_PAGE } from "@/lib/quran/constants";
 import { walkByWeight, getNextVerseEntry, normalizeRange } from "./helpers";
-import { BY_POSITION } from "@/lib/quran/verseData";
 
 export interface NewMemorizationResult {
   from: QuranPosition;
