@@ -130,6 +130,27 @@ export const REVERSE_IDX_TO_ARRAY_IDX: Record<number, number> = (() => {
 })();
 `;
 
+// ── Validate weight_on_page sums per page ───────────────────────────────────
+// Each page must sum to between 0.99 and 1.01. If not, the CSV has a data
+// error — abort before writing the file so bad data never reaches production.
+const pageWeights: Record<number, number> = {};
+for (const r of verseRows) {
+  const page = Number(r["page_no"]);
+  pageWeights[page] = (pageWeights[page] ?? 0) + Number(r["weight_on_page"]);
+}
+let validationErrors = 0;
+for (const [page, sum] of Object.entries(pageWeights)) {
+  if (sum < 0.99 || sum > 1.01) {
+    console.error(`ERROR: page ${page} weight sum = ${sum.toFixed(6)} (expected ~1.0)`);
+    validationErrors++;
+  }
+}
+if (validationErrors > 0) {
+  console.error(`Aborting: ${validationErrors} page(s) have invalid weight sums. Fix verses.csv before regenerating.`);
+  process.exit(1);
+}
+console.log(`Weight validation passed: all ${Object.keys(pageWeights).length} pages sum to ~1.0`);
+
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, output, "utf-8");
 console.log(`Written ${verseRows.length} verses, ${surahRows.length} surahs → ${OUT}`);
@@ -171,11 +192,15 @@ wc -l frontend/src/lib/quran/verseData.ts
 
 Expected: file starts with `// AUTO-GENERATED`, contains `export const VERSES`, has ~6260+ lines.
 
+- [ ] **Step 5b: Verify validation fires on bad data (optional smoke test)**
+
+Temporarily corrupt one weight value in `verses.csv` (change any `weight_on_page` to `0`), run the script, confirm it prints `ERROR:` and exits with code 1, then restore the file.
+
 - [ ] **Step 6: Commit**
 
 ```bash
 git add scripts/generate-verse-data.ts frontend/src/lib/quran/verseData.ts frontend/package.json frontend/package-lock.json
-git commit -m "feat(data): codegen script + generated verseData.ts"
+git commit -m "feat(data): codegen script + weight validation + generated verseData.ts"
 ```
 
 ---
@@ -193,6 +218,7 @@ Add to `frontend/src/lib/algorithm/__tests__/helpers.test.ts`:
 
 ```typescript
 import { walkByWeight } from "@/lib/algorithm/helpers";
+import { BY_POSITION } from "@/lib/quran/verseData";
 
 describe("walkByWeight", () => {
   it("walks forward and returns pagesUsed close to budget", () => {
@@ -211,16 +237,15 @@ describe("walkByWeight", () => {
     expect(result.to.surah).toBe(2);
   });
 
-  it("walks descending and returns a position before start", () => {
+  it("walks descending and returns a position before start (verified by orderInQuran)", () => {
     // Walk descending from An-Nas 6, budget 1.0 page
     const result = walkByWeight({ surah: 114, ayah: 6 }, 1.0, "descending");
     expect(result.from.surah).toBe(114);
-    // to should be earlier in Quran order = lower orderInQuran
-    // to.surah <= 114 and either to.surah < 114 or to.ayah <= 6
-    expect(
-      result.to.surah < result.from.surah ||
-        (result.to.surah === result.from.surah && result.to.ayah <= result.from.ayah)
-    ).toBe(true);
+    // Use orderInQuran (the absolute integer coordinate) to verify direction —
+    // not {surah, ayah} struct comparison which can be wrong at surah boundaries.
+    const fromEntry = BY_POSITION[result.from.surah]![result.from.ayah]!;
+    const toEntry = BY_POSITION[result.to.surah]![result.to.ayah]!;
+    expect(toEntry.orderInQuran).toBeLessThan(fromEntry.orderInQuran);
   });
 
   it("10% surah-snap: stops at surah boundary when < 10% remains", () => {
@@ -772,6 +797,10 @@ git commit -m "refactor(minorRevision): replace surah-loop with walkByWeight"
 
 Replace `pageSpan()` and `advanceByPages()` inside `walkWithSkips` with `weightBetween()` and `walkByWeight`. The waterfall logic (terminus, frontier, wraparound, Known Universe cap) is **unchanged**.
 
+**Key correctness guarantee:** `weightBetween(from, to, dir)` iterates `VERSES` (or `BY_REVERSE`) by `orderInQuran` / `reverseIndex` index — integer coordinates, not `{surah, ayah}` struct comparisons. Hole boundaries (excluded zone edges) are always exact verse-level boundaries because `verses.csv` is defined per verse. There are no sub-verse positions in the Quran data model, so the hole can never "start in the middle of a verse."
+
+**Frontier precision:** `computeFrontier` returns `{surah: activeSurah, ayah: 1}`. In `walkWithSkips`, when the cursor is reset to the frontier after wraparound, the `isInRange` check uses `comparePositions` which compares `{surah, ayah}`. This is safe because `ayah: 1` is always a valid, unambiguous position within the surah. If the frontier surah happens to be the same surah as an excluded zone, the teleport logic in `walkWithSkips` will correctly skip past it using `getNextAyah` → which uses `orderInQuran` arithmetic via `VERSES[entry.orderInQuran]`.
+
 - [ ] **Step 1: Replace `pageSpan` and `advanceByPages` usages inside `majorRevision.ts`**
 
 In `frontend/src/lib/algorithm/majorRevision.ts`:
@@ -949,13 +978,13 @@ git commit -m "refactor(majorRevision): replace pageSpan/advanceByPages with wei
 - Modify: `frontend/src/lib/algorithm/helpers.ts` (remove old imports + dead functions)
 - Modify: `frontend/src/lib/algorithm/__tests__/helpers.test.ts` (remove old tests)
 
-- [ ] **Step 1: Check for remaining usages of `ayahPages.ts`**
+- [ ] **Step 1: Check for ALL remaining usages of `ayahPages.ts` and page-number functions**
 
 ```bash
-grep -r "ayahPages" frontend/src --include="*.ts" --include="*.tsx" -l
+grep -r "ayahPages\|getAyahPage\|getAyahsOnPage\|getPageStartAyah\|getPageEndAyah\|advanceByPages\|pageSpan\|computeSnapThreshold\|maybeSnapToSurahBoundary" frontend/src --include="*.ts" --include="*.tsx" -l
 ```
 
-Expected: no files found (all usages already removed in Tasks 3–5).
+Expected: no files found. This catches indirect usages — e.g., `visual.test.ts` or `planGenerator.test.ts` that may assert on old page-number values (like `startPage === 604`) which would become stale now that measurement is weight-based. If any test file appears in the grep output, open it and remove or update the assertion.
 
 - [ ] **Step 2: If any files still import from `ayahPages`, fix them first**
 
