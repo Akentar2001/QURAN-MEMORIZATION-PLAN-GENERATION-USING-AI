@@ -2,6 +2,7 @@ import type { QuranPosition, PositionRange, Direction } from "@/lib/quran/types"
 import { TOTAL_SURAHS } from "@/lib/quran/constants";
 import { getSurahByNumber, SURAHS } from "@/lib/quran/surahs";
 import { getAyahPage, getPageStartAyah, getAyahsOnPage, getPageEndAyah } from "@/lib/quran/ayahPages";
+import { VERSES, BY_POSITION, BY_REVERSE, REVERSE_IDX_TO_ARRAY_IDX, SURAHS_DATA } from "@/lib/quran/verseData";
 
 /**
  * Compare two Quran positions.
@@ -252,4 +253,124 @@ export function formatRangeClean(
     }
   }
   return { from: formatPosition(from), to: formatPosition(to) };
+}
+
+export interface WalkResult {
+  from: QuranPosition;
+  to: QuranPosition;
+  pagesUsed: number;
+}
+
+/**
+ * Walk through verses by weight (page fraction), accumulating up to pageBudget.
+ * Applies a 10% surah-boundary stop rule and a 110% extension snap.
+ */
+export function walkByWeight(
+  start: QuranPosition,
+  pageBudget: number,
+  direction: Direction,
+  stopPlace?: number
+): WalkResult {
+  const startEntry = BY_POSITION[start.surah]?.[start.ayah];
+  if (!startEntry) {
+    return { from: start, to: start, pagesUsed: 0 };
+  }
+
+  let accumulated = 0;
+  let lastAccepted: QuranPosition = start;
+  let currentSurahId = start.surah;
+
+  const startIdx =
+    direction === "ascending"
+      ? startEntry.orderInQuran - 1
+      : REVERSE_IDX_TO_ARRAY_IDX[startEntry.reverseIndex];
+
+  const arr = direction === "ascending" ? VERSES : BY_REVERSE;
+
+  for (let i = startIdx; i < arr.length; i++) {
+    const verse = arr[i];
+
+    if (stopPlace !== undefined && verse.surahId === stopPlace) break;
+
+    if (verse.surahId !== currentSurahId) {
+      const remaining = pageBudget - accumulated;
+      if (remaining < pageBudget * 0.10) break;
+      currentSurahId = verse.surahId;
+    }
+
+    if (accumulated + verse.weightOnPage > pageBudget * 1.001) break;
+
+    accumulated += verse.weightOnPage;
+    lastAccepted = { surah: verse.surahId, ayah: verse.ayah };
+  }
+
+  // 110% extension: if finishing current surah costs ≤ 110% of budget, extend
+  const surahData = SURAHS_DATA[lastAccepted.surah - 1];
+  if (surahData && lastAccepted.ayah < surahData.ayahCount) {
+    let extraCost = 0;
+    const extStart =
+      direction === "ascending"
+        ? BY_POSITION[lastAccepted.surah]?.[lastAccepted.ayah + 1]?.orderInQuran ?? null
+        : null;
+
+    if (extStart !== null && direction === "ascending") {
+      for (let i = extStart - 1; i < VERSES.length; i++) {
+        const v = VERSES[i];
+        if (v.surahId !== lastAccepted.surah) break;
+        extraCost += v.weightOnPage;
+      }
+      if (accumulated + extraCost <= pageBudget * 1.10) {
+        accumulated += extraCost;
+        lastAccepted = { surah: lastAccepted.surah, ayah: surahData.ayahCount };
+      }
+    }
+  }
+
+  return { from: start, to: lastAccepted, pagesUsed: accumulated };
+}
+
+export function getVerseEntry(pos: QuranPosition) {
+  return BY_POSITION[pos.surah]?.[pos.ayah] ?? null;
+}
+
+export function getNextVerseEntry(pos: QuranPosition, direction: Direction) {
+  const entry = BY_POSITION[pos.surah]?.[pos.ayah];
+  if (!entry) return null;
+  if (direction === "ascending") {
+    return VERSES[entry.orderInQuran] ?? null;
+  }
+  const revIdx = REVERSE_IDX_TO_ARRAY_IDX[entry.reverseIndex];
+  if (revIdx === undefined) return null;
+  return BY_REVERSE[revIdx + 1] ?? null;
+}
+
+export function weightBetween(
+  from: QuranPosition,
+  to: QuranPosition,
+  direction: Direction
+): number {
+  const fromEntry = BY_POSITION[from.surah]?.[from.ayah];
+  const toEntry = BY_POSITION[to.surah]?.[to.ayah];
+  if (!fromEntry || !toEntry) return 0;
+
+  if (direction === "ascending") {
+    const startIdx = fromEntry.orderInQuran - 1;
+    const endIdx = toEntry.orderInQuran - 1;
+    let sum = 0;
+    for (let i = startIdx; i <= endIdx && i < VERSES.length; i++) {
+      sum += VERSES[i].weightOnPage;
+    }
+    return sum;
+  } else {
+    const startRevPos = REVERSE_IDX_TO_ARRAY_IDX[fromEntry.reverseIndex];
+    const endRevPos = REVERSE_IDX_TO_ARRAY_IDX[toEntry.reverseIndex];
+    if (startRevPos === undefined || endRevPos === undefined) return 0;
+    const lo = Math.min(startRevPos, endRevPos);
+    const hi = Math.max(startRevPos, endRevPos);
+    let sum = 0;
+    for (let i = lo; i <= hi && i < BY_REVERSE.length; i++) {
+      sum += BY_REVERSE[i].weightOnPage;
+    }
+    return sum;
+  }
 }

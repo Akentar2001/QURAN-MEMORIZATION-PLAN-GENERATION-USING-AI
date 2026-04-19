@@ -7,8 +7,10 @@ import {
   formatPosition,
   advanceByPages,
   normalizeRange,
+  walkByWeight,
 } from "@/lib/algorithm/helpers";
 import { getAyahPage } from "@/lib/quran/ayahPages";
+import { BY_POSITION } from "@/lib/quran/verseData";
 
 describe("comparePositions", () => {
   it("returns 0 for equal positions", () => {
@@ -134,5 +136,33 @@ describe("normalizeRange", () => {
     const r = normalizeRange({ surah: 88, ayah: 26 }, { surah: 86, ayah: 1 });
     expect(r.start).toEqual({ surah: 86, ayah: 1 });
     expect(r.end).toEqual({ surah: 88, ayah: 26 });
+  });
+});
+
+describe("walkByWeight", () => {
+  it("walks forward and returns pagesUsed close to budget", () => {
+    const result = walkByWeight({ surah: 2, ayah: 1 }, 1.0, "ascending");
+    expect(result.from).toEqual({ surah: 2, ayah: 1 });
+    expect(result.pagesUsed).toBeGreaterThan(0.9);
+    expect(result.pagesUsed).toBeLessThan(1.15);
+  });
+
+  it("stops before entering stopPlace surah", () => {
+    const result = walkByWeight({ surah: 2, ayah: 1 }, 20.0, "ascending", 3);
+    expect(result.to.surah).toBe(2);
+  });
+
+  it("walks descending and returns a position before start (verified by orderInQuran)", () => {
+    const result = walkByWeight({ surah: 114, ayah: 6 }, 1.0, "descending");
+    expect(result.from.surah).toBe(114);
+    const fromEntry = BY_POSITION[result.from.surah]![result.from.ayah]!;
+    const toEntry = BY_POSITION[result.to.surah]![result.to.ayah]!;
+    expect(toEntry.orderInQuran).toBeLessThan(fromEntry.orderInQuran);
+  });
+
+  it("10% surah-snap: stays within Al-Fatihah when budget is 0.8 pages starting at Al-Fatihah 1", () => {
+    const result = walkByWeight({ surah: 1, ayah: 1 }, 0.8, "ascending");
+    expect(result.to.surah).toBe(1);
+    expect(result.to.ayah).toBeGreaterThan(0);
   });
 });
