@@ -139,6 +139,8 @@ export function walkByWeight(
 
     if (stopPlace !== undefined && verse.surahId === stopPlace) break;
 
+    // 10% surah-boundary snap: stop walking if entering a new surah costs
+    // more than 10% of remaining budget (keeps assignments surah-aligned)
     if (verse.surahId !== currentSurahId) {
       const remaining = pageBudget - accumulated;
       if (remaining < pageBudget * 0.10) break;
