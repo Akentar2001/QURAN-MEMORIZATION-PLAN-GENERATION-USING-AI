@@ -6,16 +6,34 @@ import * as path from "path";
 const ROOT = path.join(__dirname, "..");
 const OUT = path.join(ROOT, "frontend", "src", "lib", "quran", "verseData.ts");
 
+function parseLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (ch === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 function parseCSV(filePath: string): Record<string, string>[] {
   const raw = fs.readFileSync(filePath, "utf-8").replace(/^\uFEFF/, "");
   const lines = raw.split(/\r?\n/).filter(Boolean);
-  const headers = lines[0].split(",").map((h) => h.trim());
+  const headers = parseLine(lines[0]);
   return lines.slice(1).map((line) => {
-    const parts = line.split(",");
+    const parts = parseLine(line);
     const record: Record<string, string> = {};
-    headers.forEach((h, i) => {
-      record[h] = (parts[i] ?? "").trim().replace(/^"|"$/g, "");
-    });
+    headers.forEach((h, i) => { record[h] = parts[i] ?? ""; });
     return record;
   });
 }
@@ -104,6 +122,38 @@ if (validationErrors > 0) {
   process.exit(1);
 }
 console.log(`Weight validation passed: all ${Object.keys(pageWeights).length} pages sum to ~1.0`);
+
+// Validate uniqueness of (surahId, ayah) pairs
+const seen = new Set<string>();
+let dupErrors = 0;
+for (const r of verseRows) {
+  const key = `${r["surah_id"]}:${r["order_in_surah"]}`;
+  if (seen.has(key)) {
+    console.error(`ERROR: duplicate verse ${key}`);
+    dupErrors++;
+  }
+  seen.add(key);
+}
+if (dupErrors > 0) {
+  console.error(`Aborting: ${dupErrors} duplicate verse(s) found.`);
+  process.exit(1);
+}
+
+// Validate numeric fields are actually numeric
+let numErrors = 0;
+for (const r of verseRows) {
+  const numFields = ["surah_id", "order_in_surah", "order_in_quraan", "reverse_index", "page_no", "letters_count", "weight_on_page"];
+  for (const f of numFields) {
+    if (isNaN(Number(r[f])) || r[f] === "") {
+      console.error(`ERROR: non-numeric value in field "${f}": "${r[f]}"`);
+      numErrors++;
+    }
+  }
+}
+if (numErrors > 0) {
+  console.error(`Aborting: ${numErrors} non-numeric field(s) found.`);
+  process.exit(1);
+}
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, output, "utf-8");
