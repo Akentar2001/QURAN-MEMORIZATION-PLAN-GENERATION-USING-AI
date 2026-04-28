@@ -1,5 +1,11 @@
-import type { QuranPosition, PositionRange, Direction } from "@/lib/quran/types";
-import { walkByWeight, normalizeRange } from "./helpers";
+import type { QuranPosition, PositionRange } from "@/lib/quran/types";
+import { normalizeRange } from "./helpers";
+
+export interface MemoSession {
+  start: QuranPosition;
+  end: QuranPosition;
+  pages: number;
+}
 
 export interface MinorRevisionResult {
   from: QuranPosition;
@@ -8,30 +14,38 @@ export interface MinorRevisionResult {
 }
 
 /**
- * Walk BACKWARD from the frontier to find the minor revision zone.
- * "Backward through memorization time" = toward older material:
- * - descending mem (newer = lower surah): older = higher surah → walk ascending
- * - ascending mem (newer = higher surah): older = lower surah → walk descending
+ * Minor revision: replays whole previous-day memorization sessions, most-recent
+ * first. Mirrors the Python backend's `generate_minor_revision_plan` (pages
+ * mode): always includes the latest session, then greedily adds older sessions
+ * one at a time as long as adding gets the running total CLOSER to the target.
+ *
+ * Output range: from = oldest included session's start verse, to = latest
+ * session's end verse. Returns null when there are no past sessions or budget
+ * is non-positive.
  */
 export function calculateMinorRevision(
-  frontier: QuranPosition | null,
-  minorRevPages: number,
-  memStart: QuranPosition,
-  memDirection: Direction
+  pastSessions: MemoSession[],
+  requiredPages: number
 ): MinorRevisionResult | null {
-  if (!frontier || minorRevPages <= 0) return null;
+  if (pastSessions.length === 0 || requiredPages <= 0) return null;
 
-  const walkDir: Direction = memDirection === "descending" ? "ascending" : "descending";
-  const stopPlace = memStart.surah;
+  const latest = pastSessions[0];
+  let total = latest.pages;
+  let oldestStart: QuranPosition = latest.start;
 
-  const walked = walkByWeight(frontier, minorRevPages, walkDir, stopPlace);
-
-  const olderEnd = walked.to;
-  const newerEnd = frontier;
+  for (let i = 1; i < pastSessions.length; i++) {
+    const session = pastSessions[i];
+    const potential = total + session.pages;
+    const diffWith = Math.abs(potential - requiredPages);
+    const diffWithout = Math.abs(requiredPages - total);
+    if (diffWithout < diffWith) break;
+    total = potential;
+    oldestStart = session.start;
+  }
 
   return {
-    from: olderEnd,
-    to: newerEnd,
-    range: normalizeRange(olderEnd, newerEnd),
+    from: oldestStart,
+    to: latest.end,
+    range: normalizeRange(oldestStart, latest.end),
   };
 }

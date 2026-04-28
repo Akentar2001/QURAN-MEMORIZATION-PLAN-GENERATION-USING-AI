@@ -8,6 +8,7 @@ export interface NewMemorizationResult {
   range: PositionRange;
   newCursor: QuranPosition;
   frontier: QuranPosition;
+  pagesUsed: number;
 }
 
 export function calculateNewMemorization(
@@ -30,5 +31,5 @@ export function calculateNewMemorization(
 
   const range = normalizeRange(from, to);
 
-  return { from, to, range, newCursor, frontier: to };
+  return { from, to, range, newCursor, frontier: to, pagesUsed: walked.pagesUsed };
 }

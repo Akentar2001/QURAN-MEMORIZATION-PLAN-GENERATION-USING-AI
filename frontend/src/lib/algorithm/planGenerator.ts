@@ -8,7 +8,7 @@ import { ASSIGNMENTS_COUNT } from "@/lib/quran/constants";
 import { getSurahByNumber } from "@/lib/quran/surahs";
 import { formatPosition, formatRangeClean, toArabicNumerals } from "./helpers";
 import { calculateNewMemorization } from "./newMemorization";
-import { calculateMinorRevision } from "./minorRevision";
+import { calculateMinorRevision, type MemoSession } from "./minorRevision";
 import { calculateMajorRevision } from "./majorRevision";
 
 function buildSettingsSummary(config: StudentConfig): string {
@@ -40,23 +40,23 @@ function buildSettingsSummary(config: StudentConfig): string {
 export function generatePlan(config: StudentConfig): StudentPlan {
   const assignments: AssignmentRow[] = [];
 
-  const memStart: QuranPosition = {
+  let memCursor: QuranPosition = {
     surah: config.memStartSurah,
     ayah: config.memStartAyah,
   };
-  let memCursor: QuranPosition = { ...memStart };
 
-  // Persistent major revision cursor — seeded from majRevStart on W1, then
-  // advances continuously across assignments.
-  let majRevCursor: QuranPosition = {
+  // Major revision cursor: nullable. Seeded from majRevStart on W1; becomes
+  // null when the walker exhausts the Quran in the review direction, which
+  // signals calculateMajorRevision to wrap by teleporting past the active
+  // wall surah on the next call.
+  let majRevCursor: QuranPosition | null = {
     surah: config.majRevStartSurah,
     ayah: config.majRevStartAyah,
   };
 
-  // Frontier from the PREVIOUS assignment. The minor revision walks back
-  // from here, so it covers ONLY material memorized before today's new task
-  // (excluding today's task itself).
-  let previousFrontier: QuranPosition | null = null;
+  // Past memorization sessions (most-recent first). Minor revision replays
+  // these whole-day chunks, mirroring the Python backend.
+  const pastSessions: MemoSession[] = [];
 
   for (let i = 1; i <= ASSIGNMENTS_COUNT; i++) {
     const row: AssignmentRow = {
@@ -81,30 +81,25 @@ export function generatePlan(config: StudentConfig): StudentPlan {
       memCursor = memResult.newCursor;
     }
 
-    // 2. Minor revision: X-page rolling window "immediately preceding" today's
-    // new task. Walks back from the previous assignment's frontier so today's
-    // memorization is NOT included in the minor zone.
-    const minorResult = calculateMinorRevision(
-      previousFrontier,
-      config.minorRevPages,
-      memStart,
-      config.direction
-    );
+    // 2. Minor revision: replay whole previous-day sessions (most recent
+    // first), stopping when adding another session would overshoot the
+    // page budget farther than under-shooting it.
+    const minorResult = calculateMinorRevision(pastSessions, config.minorRevPages);
 
     if (minorResult) {
       row.minorFrom = formatPosition(minorResult.from);
       row.minorTo = formatPosition(minorResult.to);
     }
 
-    // 3. Major revision: confined to the Known Universe (frontier → majRevStart),
-    // wraps at the oldest historical boundary.
+    // 3. Major revision: walks forward in review direction from a persistent
+    // cursor, stopping at a single wall = today's minor (or memo if no minor)
+    // start surah. Mirrors the Python backend's stop_place semantics.
     const majResult = calculateMajorRevision(
       majRevCursor,
       config.majRevPages,
       config.direction,
-      minorResult?.range ?? null,
-      memResult?.range ?? null,
-      { surah: config.majRevStartSurah, ayah: config.majRevStartAyah }
+      minorResult?.from.surah ?? null,
+      memResult?.from.surah ?? null
     );
 
     if (majResult) {
@@ -114,8 +109,15 @@ export function generatePlan(config: StudentConfig): StudentPlan {
 
     assignments.push(row);
 
+    // Append today's session AFTER all three sub-plans, so today's memo is
+    // available for tomorrow's minor revision (matches Python's post-loop
+    // memo_sissions refresh).
     if (memResult) {
-      previousFrontier = memResult.frontier;
+      pastSessions.unshift({
+        start: memResult.from,
+        end: memResult.to,
+        pages: memResult.pagesUsed,
+      });
     }
   }
 
