@@ -20,8 +20,8 @@ export default function SetupClient() {
         errors.push(`${label}: يرجى اختيار الطالب المرجعي`);
       }
       if (s.planType === "independent") {
-        if (s.linesPerSession < 5 || s.linesPerSession > 60) {
-          errors.push(`${label}: عدد الأسطر يجب أن يكون بين ٥ و ٦٠`);
+        if (s.pagesPerSession <= 0 || s.pagesPerSession > 4) {
+          errors.push(`${label}: المقدار اليومي يجب أن يكون بين ثُمن صفحة و ٣ صفحات`);
         }
       }
     });

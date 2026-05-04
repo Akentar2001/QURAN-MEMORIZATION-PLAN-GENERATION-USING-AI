@@ -3,6 +3,7 @@
 import Select from "@/components/ui/Select";
 import SurahSelect from "./SurahSelect";
 import type { StudentConfig } from "@/lib/quran/types";
+import { getSurahByNumber } from "@/lib/quran/surahs";
 
 interface Props {
   config: StudentConfig;
@@ -10,19 +11,21 @@ interface Props {
 }
 
 const MEM_PRESETS: { label: string; value: number }[] = [
-  { label: "٢ سطر", value: 2 },
-  { label: "٣ سطر", value: 3 },
-  { label: "٤ سطر", value: 4 },
-  { label: "٥ سطر", value: 5 },
-  { label: "٦ سطر", value: 6 },
-  { label: "٧ سطر (نصف صفحة)", value: 7 },
-  { label: "صفحة كاملة (١٥ سطر)", value: 15 },
-  { label: "صفحة ونصف", value: 22 },
-  { label: "صفحتان", value: 30 },
-  { label: "٣ صفحات", value: 45 },
+  { label: "ثُمن صفحة (٨ أيام)", value: 1 / 8 },
+  { label: "سُدس صفحة (٦ أيام)", value: 1 / 6 },
+  { label: "خُمس صفحة (٥ أيام)", value: 1 / 5 },
+  { label: "رُبع صفحة (٤ أيام)", value: 1 / 4 },
+  { label: "ثُلث صفحة (٣ أيام)", value: 1 / 3 },
+  { label: "نصف صفحة (يومان)", value: 1 / 2 },
+  { label: "صفحة كاملة", value: 1 },
+  { label: "صفحة ونصف", value: 1.5 },
+  { label: "صفحتان", value: 2 },
+  { label: "٣ صفحات", value: 3 },
 ];
 
 export default function MemorizationSettings({ config, onUpdate }: Props) {
+  const surahAyahCount = getSurahByNumber(config.memStartSurah).ayahCount;
+
   return (
     <div className="space-y-3">
       <h4 className="font-bold text-[var(--color-navy)] border-b pb-1">إعدادات الحفظ</h4>
@@ -35,15 +38,15 @@ export default function MemorizationSettings({ config, onUpdate }: Props) {
         label="بداية الحفظ من آية"
         value={String(config.memStartAyah)}
         onChange={(v) => onUpdate({ memStartAyah: Number(v) })}
-        options={Array.from({ length: 30 }, (_, i) => ({
+        options={Array.from({ length: surahAyahCount }, (_, i) => ({
           value: String(i + 1),
           label: String(i + 1),
         }))}
       />
       <Select
         label="المقدار اليومي للحفظ"
-        value={String(config.linesPerSession)}
-        onChange={(v) => onUpdate({ linesPerSession: Number(v) })}
+        value={String(config.pagesPerSession)}
+        onChange={(v) => onUpdate({ pagesPerSession: Number(v) })}
         options={MEM_PRESETS.map((p) => ({
           value: String(p.value),
           label: p.label,

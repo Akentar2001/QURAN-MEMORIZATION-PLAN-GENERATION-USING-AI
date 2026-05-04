@@ -1,5 +1,4 @@
 import type { QuranPosition, Direction, PositionRange } from "@/lib/quran/types";
-import { LINES_PER_PAGE } from "@/lib/quran/constants";
 import { walkByWeight, getNextVerseEntry, normalizeRange } from "./helpers";
 
 export interface NewMemorizationResult {
@@ -13,13 +12,19 @@ export interface NewMemorizationResult {
 
 export function calculateNewMemorization(
   cursor: QuranPosition,
-  linesPerSession: number,
-  direction: Direction
+  pagesPerSession: number,
+  direction: Direction,
+  cumulativeActual: number,
+  sessionNumber: number
 ): NewMemorizationResult | null {
-  if (linesPerSession <= 0) return null;
+  if (pagesPerSession <= 0) return null;
 
-  const pageBudget = linesPerSession / LINES_PER_PAGE;
-  const walked = walkByWeight(cursor, pageBudget, direction);
+  const cumulativeTarget = sessionNumber * pagesPerSession;
+  const todaysBudget = cumulativeTarget - cumulativeActual;
+  if (todaysBudget <= 0) return null;
+
+  const walked = walkByWeight(cursor, todaysBudget, direction);
+  if (walked.pagesUsed <= 0) return null;
 
   const from = walked.from;
   const to = walked.to;

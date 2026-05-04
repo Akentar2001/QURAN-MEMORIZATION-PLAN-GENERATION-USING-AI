@@ -23,7 +23,7 @@ function createDefaultStudent(): StudentConfig {
     planType: "independent",
     memStartSurah: 114,
     memStartAyah: 1,
-    linesPerSession: 15,
+    pagesPerSession: 1,
     direction: "descending",
     minorRevPages: 1,
     majRevStartSurah: 1,
@@ -86,16 +86,29 @@ export const usePlanStore = create<PlanStore>()(
     }),
     {
       name: "quran-plan-generator",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
         students: state.students,
         plans: state.plans,
       }),
       migrate: (persisted, version) => {
-        const state = persisted as { students?: StudentConfig[]; plans?: StudentPlan[] };
+        const state = persisted as {
+          students?: Array<StudentConfig & { linesPerSession?: number }>;
+          plans?: StudentPlan[];
+        };
         if (version < 2) {
           return { students: state.students ?? [], plans: [] };
+        }
+        if (version < 3) {
+          const migratedStudents = (state.students ?? []).map((s) => {
+            if (typeof s.linesPerSession === "number" && s.pagesPerSession === undefined) {
+              const { linesPerSession, ...rest } = s;
+              return { ...rest, pagesPerSession: linesPerSession / 15 };
+            }
+            return s;
+          });
+          return { students: migratedStudents, plans: [] };
         }
         return state;
       },

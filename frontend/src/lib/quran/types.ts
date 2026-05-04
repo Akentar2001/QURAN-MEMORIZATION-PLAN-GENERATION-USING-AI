@@ -27,7 +27,7 @@ export interface StudentConfig {
 
   memStartSurah: number;
   memStartAyah: number;
-  linesPerSession: number;
+  pagesPerSession: number;
   direction: Direction;
 
   minorRevPages: number;

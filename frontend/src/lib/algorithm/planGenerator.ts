@@ -11,6 +11,25 @@ import { calculateNewMemorization } from "./newMemorization";
 import { calculateMinorRevision, type MemoSession } from "./minorRevision";
 import { calculateMajorRevision } from "./majorRevision";
 
+const PAGE_AMOUNT_LABELS: Record<string, string> = {
+  [String(1 / 8)]: "ثُمن صفحة",
+  [String(1 / 6)]: "سُدس صفحة",
+  [String(1 / 5)]: "خُمس صفحة",
+  [String(1 / 4)]: "رُبع صفحة",
+  [String(1 / 3)]: "ثُلث صفحة",
+  [String(1 / 2)]: "نصف صفحة",
+  "1": "صفحة كاملة",
+  "1.5": "صفحة ونصف",
+  "2": "صفحتان",
+  "3": "٣ صفحات",
+};
+
+function formatAmount(pagesPerSession: number): string {
+  const label = PAGE_AMOUNT_LABELS[String(pagesPerSession)];
+  if (label) return label;
+  return `${pagesPerSession} صفحة`;
+}
+
 function buildSettingsSummary(config: StudentConfig): string {
   const memSurah = getSurahByNumber(config.memStartSurah);
   const majSurah = getSurahByNumber(config.majRevStartSurah);
@@ -20,7 +39,7 @@ function buildSettingsSummary(config: StudentConfig): string {
   return [
     `الحفظ: ${memSurah.nameArabic} آية ${toArabicNumerals(config.memStartAyah)}`,
     `الاتجاه: ${directionLabel}`,
-    `المقدار: ${toArabicNumerals(config.linesPerSession)} سطر`,
+    `المقدار: ${formatAmount(config.pagesPerSession)}`,
     `المراجعة الصغرى: ${toArabicNumerals(config.minorRevPages)} صفحة`,
     `المراجعة الكبرى: ${majSurah.nameArabic} - ${toArabicNumerals(config.majRevPages)} صفحات`,
   ].join(" | ");
@@ -58,6 +77,10 @@ export function generatePlan(config: StudentConfig): StudentPlan {
   // these whole-day chunks, mirroring the Python backend.
   const pastSessions: MemoSession[] = [];
 
+  // Cumulative pages already memorized — fed back into newMemorization so each
+  // session's budget self-corrects yesterday's drift.
+  let cumulativeActual = 0;
+
   for (let i = 1; i <= ASSIGNMENTS_COUNT; i++) {
     const row: AssignmentRow = {
       assignmentNumber: i,
@@ -71,14 +94,17 @@ export function generatePlan(config: StudentConfig): StudentPlan {
     // 1. New memorization
     const memResult = calculateNewMemorization(
       memCursor,
-      config.linesPerSession,
-      config.direction
+      config.pagesPerSession,
+      config.direction,
+      cumulativeActual,
+      i
     );
 
     if (memResult) {
       row.memFrom = formatPosition(memResult.from);
       row.memTo = formatPosition(memResult.to);
       memCursor = memResult.newCursor;
+      cumulativeActual += memResult.pagesUsed;
     }
 
     // 2. Minor revision: replay whole previous-day sessions (most recent

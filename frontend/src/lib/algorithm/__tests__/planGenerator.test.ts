@@ -10,7 +10,7 @@ describe("generatePlan", () => {
     planType: "independent",
     memStartSurah: 88, // Al-Ghashiyah
     memStartAyah: 1,
-    linesPerSession: 15, // 1 page
+    pagesPerSession: 1,
     direction: "descending",
     minorRevPages: 1,
     majRevStartSurah: 89, // Al-Fajr
@@ -110,7 +110,7 @@ describe("generatePlan", () => {
       planType: "independent",
       memStartSurah: 2,
       memStartAyah: 1,
-      linesPerSession: 15,
+      pagesPerSession: 1,
       direction: "ascending",
       minorRevPages: 1,
       majRevStartSurah: 78, // An-Naba
@@ -164,7 +164,7 @@ describe("generatePlan", () => {
       planType: "independent",
       memStartSurah: 80,
       memStartAyah: 1,
-      linesPerSession: 15,
+      pagesPerSession: 1,
       direction: "descending",
       minorRevPages: 1,
       majRevStartSurah: 113, // Al-Falaq — very near the end
@@ -193,7 +193,7 @@ describe("generatePlan", () => {
       planType: "independent",
       memStartSurah: 1,
       memStartAyah: 1,
-      linesPerSession: 15,
+      pagesPerSession: 1,
       direction: "ascending",
       minorRevPages: 1,
       majRevStartSurah: 114,
