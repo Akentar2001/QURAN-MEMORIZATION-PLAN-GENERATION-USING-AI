@@ -1,7 +1,7 @@
 import type { QuranPosition, PositionRange, Direction } from "@/lib/quran/types";
-import { TOTAL_SURAHS } from "@/lib/quran/constants";
+import { TOTAL_SURAHS, LINES_PER_PAGE } from "@/lib/quran/constants";
 import { getSurahByNumber } from "@/lib/quran/surahs";
-import { VERSES, BY_POSITION, BY_REVERSE, REVERSE_IDX_TO_ARRAY_IDX, SURAHS_DATA } from "@/lib/quran/verseData";
+import { VERSES, BY_POSITION, BY_REVERSE, REVERSE_IDX_TO_ARRAY_IDX, SURAHS_DATA, SURAH_WEIGHTS } from "@/lib/quran/verseData";
 
 /**
  * Compare two Quran positions.
@@ -153,25 +153,35 @@ export function walkByWeight(
     lastAccepted = { surah: verse.surahId, ayah: verse.ayah };
   }
 
-  // 110% extension: if finishing current surah costs ≤ 110% of budget, extend
+  // Surah-completion extension: finish the current surah if only a small
+  // fraction of its weight remains. The decision is surah-relative (not
+  // budget-relative), with an absolute safety cap so a long surah can never
+  // cause a runaway overshoot.
+  //
+  // Iteration is ALWAYS toward higher ayahs (ayah → ayahCount) because the
+  // walker's in-surah traversal is always ascending in ayah order, regardless
+  // of `direction` (which affects surah-to-surah order, not in-surah order).
+  // See BY_REVERSE construction in verseData.ts and CLAUDE.md.
   const surahData = SURAHS_DATA[lastAccepted.surah - 1];
   if (surahData && lastAccepted.ayah < surahData.ayahCount) {
     let extraCost = 0;
-    const extStart =
-      direction === "ascending"
-        ? BY_POSITION[lastAccepted.surah]?.[lastAccepted.ayah + 1]?.orderInQuran ?? null
-        : null;
+    let finalAyah = lastAccepted.ayah;
+    for (let a = lastAccepted.ayah + 1; a <= surahData.ayahCount; a++) {
+      const v = BY_POSITION[lastAccepted.surah]?.[a];
+      if (!v) break;
+      extraCost += v.weightOnPage;
+      finalAyah = a;
+    }
 
-    if (extStart !== null && direction === "ascending") {
-      for (let i = extStart - 1; i < VERSES.length; i++) {
-        const v = VERSES[i];
-        if (v.surahId !== lastAccepted.surah) break;
-        extraCost += v.weightOnPage;
-      }
-      if (accumulated + extraCost <= pageBudget * 1.10) {
-        accumulated += extraCost;
-        lastAccepted = { surah: lastAccepted.surah, ayah: surahData.ayahCount };
-      }
+    const surahTotalWeight = SURAH_WEIGHTS[lastAccepted.surah] ?? 0;
+    const fracRemaining = surahTotalWeight > 0 ? extraCost / surahTotalWeight : 1;
+    const oneLine = 1 / LINES_PER_PAGE;
+    const maxOvershoot = 0.5; // pages — absolute cap to prevent long-surah blowups
+
+    const surahNearlyDone = fracRemaining <= 0.10 || extraCost <= oneLine;
+    if (surahNearlyDone && extraCost <= maxOvershoot) {
+      accumulated += extraCost;
+      lastAccepted = { surah: lastAccepted.surah, ayah: finalAyah };
     }
   }
 

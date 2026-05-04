@@ -135,3 +135,47 @@ describe("walkByWeight", () => {
     expect(result.to.ayah).toBeGreaterThan(0);
   });
 });
+
+describe("walkByWeight surah-completion extension", () => {
+  // Al-Mursalat (77, 50 ayahs, ~1.55 pages total). At ayah 48 the remainder
+  // (ayahs 49-50) is ~3% of surah weight — well below the 10% threshold.
+  it("finishes Al-Mursalat when ≤10% of surah remains (ayah 48 → 50)", () => {
+    const result = walkByWeight({ surah: 77, ayah: 48 }, 0.001, "ascending");
+    expect(result.to.surah).toBe(77);
+    expect(result.to.ayah).toBe(50);
+  });
+
+  it("does NOT extend when more than 10% of the surah remains", () => {
+    // Walking from Al-Mursalat ayah 1 with a half-page budget: walker stops
+    // somewhere mid-surah with far more than 10% of the surah still ahead.
+    const result = walkByWeight({ surah: 77, ayah: 1 }, 0.5, "ascending");
+    expect(result.to.surah).toBe(77);
+    expect(result.to.ayah).toBeLessThan(45);
+  });
+
+  it("one-line floor: finishes An-Nas when only one short ayah remains", () => {
+    // An-Nas (114, 6 ayahs). Walking from ayah 5 with a tiny budget: walker
+    // accepts no verses; remainder is ayah 6 (~0.05 page = within 1 line).
+    const result = walkByWeight({ surah: 114, ayah: 5 }, 0.001, "ascending");
+    expect(result.to.surah).toBe(114);
+    expect(result.to.ayah).toBe(6);
+  });
+
+  it("descending walk also extends to surah end (in-surah order is always ascending)", () => {
+    // Walking with direction='descending' from Mursalat ayah 48: in-surah
+    // order is still ascending (48 → 49 → 50). With a tiny budget the walker
+    // accepts no extra verses; remaining (49-50) is < 10% of surah weight,
+    // so extension fires forward to ayah 50.
+    const result = walkByWeight({ surah: 77, ayah: 48 }, 0.001, "descending");
+    expect(result.to.surah).toBe(77);
+    expect(result.to.ayah).toBe(50);
+  });
+
+  it("absolute safety cap: never extends if remainder exceeds 0.5 pages", () => {
+    // Al-Baqarah is ~48 pages. With a budget of 40 the walker stops well short
+    // of the end, and the remainder weight far exceeds the 0.5-page cap, so
+    // the surah-completion extension must not fire.
+    const result = walkByWeight({ surah: 2, ayah: 1 }, 40, "ascending");
+    expect(result.to.ayah).toBeLessThan(286);
+  });
+});

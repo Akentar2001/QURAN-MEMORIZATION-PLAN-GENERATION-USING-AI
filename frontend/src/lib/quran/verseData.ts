@@ -6392,3 +6392,14 @@ export const REVERSE_IDX_TO_ARRAY_IDX: Record<number, number> = (() => {
   BY_REVERSE.forEach((v, i) => { m[v.reverseIndex] = i; });
   return m;
 })();
+
+// Total page-weight per surah (sum of weightOnPage across all its verses).
+// Used by walkByWeight to decide whether to extend a session to finish a
+// near-complete surah based on the surah's own weight, not the page budget.
+export const SURAH_WEIGHTS: Record<number, number> = (() => {
+  const m: Record<number, number> = {};
+  for (const v of VERSES) {
+    m[v.surahId] = (m[v.surahId] ?? 0) + v.weightOnPage;
+  }
+  return m;
+})();
